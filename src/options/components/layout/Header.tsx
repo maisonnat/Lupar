@@ -23,7 +23,7 @@ export default function Header() {
           <path d="M12 2V7M12 18V22M3 7L8 10.5M16 10.5L21 7M3 17L8 15.5M16 15.5L21 17" stroke="#2563EB" strokeWidth="1.5" strokeLinecap="round"/>
         </svg>
         <div className="flex items-baseline gap-2">
-          <span className="font-semibold text-gray-900">AI Compliance Tracker</span>
+          <span className="font-semibold text-gray-900">Lupar</span>
           <span className="text-xs text-gray-400">v1.0.0</span>
         </div>
       </div>
