@@ -1,6 +1,14 @@
-# Lupar
+<p align="center">
+  <img src="src/assets/lupar-logo.png" alt="Lupar" width="300">
+</p>
 
-[![CI](https://github.com/maisonnat/Lupar/actions/workflows/test.yml/badge.svg)](https://github.com/maisonnat/Lupar/actions/workflows/test.yml)
+<h1 align="center">Lupar</h1>
+
+<p align="center">
+  <a href="https://github.com/maisonnat/Lupar/actions/workflows/test.yml">
+    <img src="https://github.com/maisonnat/Lupar/actions/workflows/test.yml/badge.svg" alt="CI">
+  </a>
+</p>
 
 Chrome Extension (Manifest V3) that detects **Shadow AI** usage in the browser and generates compliance reports for **EU AI Act**, **ISO 42001**, and **Colorado SB 205**.
 
