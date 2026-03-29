@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@theme {
+  --color-risk-prohibited: #ef4444;
+  --color-risk-high: #f97316;
+  --color-risk-limited: #eab308;
+  --color-risk-minimal: #22c55e;
+  --color-risk-critical: #ef4444;
+  --color-risk-alto: #f97316;
+  --color-risk-moderado: #eab308;
+  --color-risk-bajo: #22c55e;
+}

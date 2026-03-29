@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Lupar",
+  "version": "1.0.0",
+  "description": "Shadow AI Discovery & Compliance - EU AI Act, ISO 42001, Colorado SB 205",
+  "permissions": [
+    "tabs",
+    "storage",
+    "webNavigation",
+    "unlimitedStorage"
+  ],
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "options_page": "src/options/index.html",
+  "action": {
+    "default_icon": {
+      "16": "src/assets/icon-16.png",
+      "32": "src/assets/icon-32.png",
+      "48": "src/assets/icon-48.png",
+      "128": "src/assets/icon-128.png"
+    },
+    "default_title": "Lupar"
+  },
+  "icons": {
+    "16": "src/assets/icon-16.png",
+    "32": "src/assets/icon-32.png",
+    "48": "src/assets/icon-48.png",
+    "128": "src/assets/icon-128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
