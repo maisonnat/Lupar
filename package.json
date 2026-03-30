@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
+    "@tailwindcss/vite": "^4.2.2",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@types/chrome": "^0.0.315",
