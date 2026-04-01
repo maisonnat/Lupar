@@ -20,6 +20,18 @@ export interface UpcomingDeadline {
   urgency: DeadlineUrgency
 }
 
+export type SurgeLevel = 'none' | 'low' | 'medium' | 'high'
+
+export interface SurgeAlert {
+  isActive: boolean
+  level: SurgeLevel
+  recentCount: number
+  averageCount: number
+  threshold: number
+  recentDays: number
+  newTools: { domain: string; toolName: string; firstSeen: string }[]
+}
+
 const DEFAULT_DAYS_AHEAD = 90
 
 export const RISK_LEVEL_ORDER: RiskLevel[] = ['prohibited', 'high', 'limited', 'minimal']
@@ -374,4 +386,72 @@ export function markOverdueAssessments(
       complianceStatus: updatedCompliance,
     }
   })
+}
+
+export function detectSurge(
+  discoveries: DiscoveryRecord[],
+  recentDays: number = 7,
+  thresholdMultiplier: number = 2.5,
+): SurgeAlert {
+  if (discoveries.length === 0) {
+    return {
+      isActive: false,
+      level: 'none',
+      recentCount: 0,
+      averageCount: 0,
+      threshold: 0,
+      recentDays,
+      newTools: [],
+    }
+  }
+
+  const now = new Date()
+  const recentCutoff = new Date()
+  recentCutoff.setDate(now.getDate() - recentDays)
+
+  const olderCutoff = new Date()
+  olderCutoff.setDate(now.getDate() - recentDays * 4)
+
+  const recentDiscoveries = discoveries.filter(
+    (d) => new Date(d.firstSeen) >= recentCutoff,
+  )
+
+  const olderDiscoveries = discoveries.filter(
+    (d) => new Date(d.firstSeen) >= olderCutoff && new Date(d.firstSeen) < recentCutoff,
+  )
+
+  const recentCount = recentDiscoveries.length
+  const averageCount = olderDiscoveries.length > 0
+    ? Math.max(1, Math.round(olderDiscoveries.length / 3))
+    : 1
+
+  const threshold = Math.max(1, Math.round(averageCount * thresholdMultiplier))
+  const isActive = recentCount >= threshold
+
+  let level: SurgeLevel = 'none'
+  if (isActive) {
+    const ratio = recentCount / averageCount
+    if (ratio >= 4) level = 'high'
+    else if (ratio >= 3) level = 'medium'
+    else level = 'low'
+  }
+
+  const newTools = recentDiscoveries
+    .sort((a, b) => new Date(b.firstSeen).getTime() - new Date(a.firstSeen).getTime())
+    .slice(0, 10)
+    .map((d) => ({
+      domain: d.domain,
+      toolName: d.toolName,
+      firstSeen: d.firstSeen,
+    }))
+
+  return {
+    isActive,
+    level,
+    recentCount,
+    averageCount,
+    threshold,
+    recentDays,
+    newTools,
+  }
 }

@@ -1,7 +1,7 @@
 # Lupar — Estado del Proyecto
 
 > Última actualización: 2026-04-01
-> Tests: 381 passing, 12/12 E2E passing
+> Tests: 387 passing, 12/12 E2E passing
 
 ---
 
@@ -21,6 +21,43 @@
 | **1.7** | Próximos Vencimientos (widget con deadlines por artículo, agrupados por urgencia) | 2026-04-01 |
 | **1.8** | Notificaciones por Umbral (badge dinámico con 4 colores, alertas configurables por días/riesgo/max sin evaluar) | 2026-04-01 |
 | **1.9** | Mapa de Calor Departamento × Riesgo (tabla con intensidad de color, departamentos dinámicos, columna total) | 2026-04-01 |
+| **1.15** | Shadow AI Surge Alert (detección de picos de uso, widget en dashboard con 4 niveles de alerta, lista de nuevas herramientas) | 2026-04-01 |
+
+### Detalle Task 1.15 (3 subtasks completas)
+
+**Tipos nuevos en risk-calculator.ts:**
+```ts
+export type SurgeLevel = 'none' | 'low' | 'medium' | 'high'
+
+export interface SurgeAlert {
+  isActive: boolean
+  level: SurgeLevel
+  recentCount: number
+  averageCount: number
+  threshold: number
+  recentDays: number
+  newTools: { domain: string; toolName: string; firstSeen: string }[]
+}
+```
+
+**Subtasks completadas:**
+- **1.15.1** — `detectSurge(discoveries, recentDays, thresholdMultiplier)` en `risk-calculator.ts` — función pura que compara detecciones de los últimos N días vs promedio histórico (3x ventana). Clasifica: low (≥2.5x), medium (≥3x), high (≥4x). Retorna lista de top 10 herramientas más recientes.
+- **1.15.2** — Componente `SurgeAlert.tsx` — widget en dashboard con: estado normal ("Sin actividad sospechosa"), niveles de alerta con iconos y colores (low=amarillo, medium=naranja, high=rojo), grid con métricas (recientes vs promedio vs umbral), lista de nuevas herramientas detectadas.
+- **1.15.3** — Tests: 6 component tests ( SurgeAlert) = 6 tests nuevos
+
+**Archivos nuevos:**
+- `src/options/components/dashboard/SurgeAlert.tsx` — widget de alerta de surge
+- `src/options/components/dashboard/SurgeAlert.test.tsx` — 6 tests de componente
+
+**Archivos modificados:**
+- `src/options/utils/risk-calculator.ts` — `SurgeLevel`, `SurgeAlert`, `detectSurge()`
+- `src/options/components/dashboard/Dashboard.tsx` — import detectSurge + SurgeAlert, useMemo + JSX
+
+**Decisiones:**
+- `detectSurge()` es función PURA — testeable en unit tests sin mock de chrome API
+- Ventana default: 7 días, multiplicador threshold: 2.5x (configurable vía parámetros)
+- Componente muestra grid 3 columnas cuando hay surge activo (recent/average/threshold)
+- Lista de nuevas herramientas limitada a top 10 ordenadas por firstSeen descendente
 
 ### Detalle Task 1.9 (5 subtasks completas)
 
