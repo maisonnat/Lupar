@@ -88,7 +88,9 @@ describe('UpcomingDeadlines', () => {
   it('should show formatted due date', async () => {
     const dueDate = new Date(2026, 3, 15).toISOString()
     await renderAndWait(<UpcomingDeadlines deadlines={[makeDeadline({ dueDate })]} />)
-    expect(screen.getByText(/15\/04\/2026/)).toBeInTheDocument()
+    // Use findAllByText since date may be rendered as multiple text nodes
+    const dateElements = await screen.findAllByText(/15\/04\/2026/)
+    expect(dateElements.length).toBeGreaterThan(0)
   })
 
   it('should show correct days label for overdue', async () => {
