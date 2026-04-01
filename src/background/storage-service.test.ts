@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mockStore } from '../../vitest.setup'
+import { createMockComplianceStatus } from '@test-utils/mock-helpers'
 import {
   getDiscoveries,
   saveDiscovery,
@@ -18,6 +19,39 @@ import {
   StorageError,
 } from '@background/storage-service'
 import type { DiscoveryRecord } from '@shared/types/discovery'
+import type { AppSettings } from '@shared/types/storage'
+
+function createMockSettings(): AppSettings {
+  return {
+    version: '1.0.0',
+    companyName: '',
+    responsiblePerson: '',
+    installationDate: '2026-03-01T00:00:00.000Z',
+    badgeNotifications: true,
+    requireDepartment: false,
+    snapshotFrequencyDays: 0,
+    timezone: 'America/Argentina/Buenos_Aires',
+    dateFormat: 'DD/MM/YYYY',
+    customDomains: [],
+    excludedDomains: [],
+    regulationConfig: {
+      euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+      iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+      coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+    },
+    auditModeConfig: {
+      auditMode: false,
+      auditModeActivatedAt: null,
+      auditModeActivatedBy: null,
+    },
+    adminProfile: {
+      adminName: '',
+      adminEmail: '',
+      adminRole: 'compliance_officer',
+      department: '',
+    },
+  }
+}
 
 function createMockDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecord {
   return {
@@ -32,13 +66,10 @@ function createMockDiscovery(overrides: Partial<DiscoveryRecord> = {}): Discover
     firstSeen: '2026-03-15T09:23:41.000Z',
     lastSeen: '2026-03-28T14:55:12.000Z',
     visitCount: 1,
-    complianceStatus: {
-      euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
-    },
+    complianceStatus: createMockComplianceStatus(),
     notes: '',
     tags: [],
+    auditTrail: [],
     ...overrides,
   }
 }
@@ -97,7 +128,8 @@ describe('storage-service', () => {
 
   describe('createDiscovery', () => {
     it('should create a discovery with correct defaults', async () => {
-      const record = await createDiscovery('chatgpt.com', 'ChatGPT', 'chatbot', 'limited')
+      const settings = createMockSettings()
+      const record = await createDiscovery('chatgpt.com', 'ChatGPT', 'chatbot', 'limited', settings)
 
       expect(record.id).toBeTruthy()
       expect(record.domain).toBe('chatgpt.com')
@@ -113,15 +145,17 @@ describe('storage-service', () => {
     })
 
     it('should set compliance status with correct defaults', async () => {
-      const record = await createDiscovery('chatgpt.com', 'ChatGPT', 'chatbot', 'limited')
+      const settings = createMockSettings()
+      const record = await createDiscovery('chatgpt.com', 'ChatGPT', 'chatbot', 'limited', settings)
 
-      expect(record.complianceStatus.euAiAct.assessment).toBe('pending')
-      expect(record.complianceStatus.iso42001.assessment).toBe('pending')
-      expect(record.complianceStatus.coSb205.assessment).toBe('not_applicable')
+      expect(record.complianceStatus.euAiAct['art-4'].assessment).toBe('pending')
+      expect(record.complianceStatus.iso42001['iso-aims-inventory'].assessment).toBe('pending')
+      expect(record.complianceStatus.coSb205['co-risk-policy'].assessment).toBe('not_applicable')
     })
 
     it('should persist the created discovery', async () => {
-      await createDiscovery('chatgpt.com', 'ChatGPT', 'chatbot', 'limited')
+      const settings = createMockSettings()
+      await createDiscovery('chatgpt.com', 'ChatGPT', 'chatbot', 'limited', settings)
 
       const stored = mockStore['ai_discoveries'] as DiscoveryRecord[]
       expect(stored).toHaveLength(1)
@@ -186,12 +220,10 @@ describe('storage-service', () => {
 
     it('should save and retrieve settings', async () => {
       await saveSettings({
-        version: '1.0.0',
+        ...createMockSettings(),
         companyName: 'Test Corp',
         responsiblePerson: 'John Doe',
-        installationDate: '2026-03-01T00:00:00.000Z',
         badgeNotifications: false,
-        customDomains: [],
         excludedDomains: ['test.com'],
       })
 
@@ -205,15 +237,7 @@ describe('storage-service', () => {
 
   describe('updateSettings', () => {
     it('should merge updates with existing settings', async () => {
-      await saveSettings({
-        version: '1.0.0',
-        companyName: '',
-        responsiblePerson: '',
-        installationDate: '2026-03-01T00:00:00.000Z',
-        badgeNotifications: true,
-        customDomains: [],
-        excludedDomains: [],
-      })
+      await saveSettings(createMockSettings())
 
       const updated = await updateSettings({ companyName: 'New Corp' })
       expect(updated.companyName).toBe('New Corp')
@@ -291,21 +315,13 @@ describe('storage-service', () => {
   describe('exportAll / importAll', () => {
     it('should export all storage data', async () => {
       await saveDiscovery(createMockDiscovery())
-      await saveSettings({
-        version: '1.0.0',
-        companyName: 'Test',
-        responsiblePerson: 'Admin',
-        installationDate: '2026-03-01T00:00:00.000Z',
-        badgeNotifications: true,
-        customDomains: [],
-        excludedDomains: [],
-      })
+      await saveSettings(createMockSettings())
       await logActivity('new_detection', 'chatgpt.com', 'Test')
 
       const exported = await exportAll()
 
       expect(exported.ai_discoveries).toHaveLength(1)
-      expect(exported.app_settings.companyName).toBe('Test')
+      expect(exported.app_settings.companyName).toBe('')
       expect(exported.activity_log).toHaveLength(1)
     })
 
@@ -313,15 +329,11 @@ describe('storage-service', () => {
       const data = {
         ai_discoveries: [createMockDiscovery()],
         app_settings: {
-          version: '1.0.0',
+          ...createMockSettings(),
           companyName: 'Imported',
-          responsiblePerson: '',
-          installationDate: '2026-03-01T00:00:00.000Z',
-          badgeNotifications: true,
-          customDomains: [],
-          excludedDomains: [],
         },
         activity_log: [],
+        compliance_snapshots: [],
       }
 
       await importAll(data)
@@ -338,6 +350,7 @@ describe('storage-service', () => {
         ai_discoveries: 'not-array' as unknown as [],
         app_settings: {} as unknown as import('@shared/types/storage').AppSettings,
         activity_log: [] as unknown as import('@shared/types/storage').ActivityLogEntry[],
+        compliance_snapshots: [],
       }
       await expect(importAll(invalid)).rejects.toThrow(StorageError)
     })
@@ -347,6 +360,7 @@ describe('storage-service', () => {
         ai_discoveries: [],
         app_settings: null as unknown as import('@shared/types/storage').AppSettings,
         activity_log: [] as unknown as import('@shared/types/storage').ActivityLogEntry[],
+        compliance_snapshots: [],
       }
       await expect(importAll(invalid)).rejects.toThrow(StorageError)
     })
@@ -356,6 +370,7 @@ describe('storage-service', () => {
         ai_discoveries: [],
         app_settings: { version: '1' } as unknown as import('@shared/types/storage').AppSettings,
         activity_log: 'not-array' as unknown as import('@shared/types/storage').ActivityLogEntry[],
+        compliance_snapshots: [],
       }
       await expect(importAll(invalid)).rejects.toThrow(StorageError)
     })

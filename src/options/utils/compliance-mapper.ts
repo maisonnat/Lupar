@@ -94,26 +94,40 @@ export function mapCompliance(discoveries: DiscoveryRecord[]): ComplianceMapResu
 
   const summaries = regulationKeys.map((regId) => {
     const reg = REGULATIONS[regId]
-    const entries = discoveries.map((d) => d.complianceStatus[regId])
-    const totalTools = entries.length
-    const complete = entries.filter((e) => e.assessment === 'complete').length
-    const pending = entries.filter((e) => e.assessment === 'pending').length
-    const overdue = entries.filter((e) => e.assessment === 'overdue').length
-    const notApplicable = entries.filter((e) => e.assessment === 'not_applicable').length
-    const assessable = totalTools - notApplicable
-    const percentComplete = assessable > 0 ? Math.round((complete / assessable) * 100) : 100
+    let totalChecklists = 0
+    let complete = 0
+    let pending = 0
+    let overdue = 0
+    let notApplicable = 0
 
     const gaps: ComplianceGap[] = []
 
     for (const d of discoveries) {
-      const cs = d.complianceStatus[regId]
-      if (cs.assessment === 'complete' || cs.assessment === 'not_applicable') continue
-
+      const articleMap = d.complianceStatus[regId]
       const effectiveRisk: RiskLevel = d.userRiskLevel ?? d.defaultRiskLevel
       const articles = relevantArticles(regId, effectiveRisk)
 
       for (const article of articles) {
-        const action = suggestAction(cs.assessment, effectiveRisk, article)
+        const checklist = articleMap[article.id]
+        if (!checklist) continue
+
+        totalChecklists++
+
+        if (checklist.assessment === 'complete') {
+          complete++
+          continue
+        }
+        if (checklist.assessment === 'not_applicable') {
+          notApplicable++
+          continue
+        }
+        if (checklist.assessment === 'overdue') {
+          overdue++
+        } else {
+          pending++
+        }
+
+        const action = suggestAction(checklist.assessment, effectiveRisk, article)
         gaps.push({
           regulationId: regId,
           regulationName: reg.shortName,
@@ -124,12 +138,15 @@ export function mapCompliance(discoveries: DiscoveryRecord[]): ComplianceMapResu
           category: CATEGORY_LABELS[d.category],
           riskLevel: effectiveRisk,
           status: DISCOVERY_STATUS_LABELS[d.status],
-          assessment: cs.assessment,
+          assessment: checklist.assessment,
           action,
-          severity: severityMap[cs.assessment],
+          severity: severityMap[checklist.assessment],
         })
       }
     }
+
+    const assessable = totalChecklists - notApplicable
+    const percentComplete = assessable > 0 ? Math.round((complete / assessable) * 100) : 100
 
     gaps.sort((a, b) => b.severity - a.severity)
     allGaps.push(...gaps)
@@ -137,7 +154,7 @@ export function mapCompliance(discoveries: DiscoveryRecord[]): ComplianceMapResu
     return {
       regulationId: regId,
       regulationName: reg.shortName,
-      totalTools,
+      totalTools: discoveries.length,
       complete,
       pending,
       overdue,
@@ -149,7 +166,7 @@ export function mapCompliance(discoveries: DiscoveryRecord[]): ComplianceMapResu
 
   allGaps.sort((a, b) => b.severity - a.severity)
 
-  const totalAssessable = summaries.reduce((sum, s) => sum + s.totalTools - s.notApplicable, 0)
+  const totalAssessable = summaries.reduce((sum, s) => sum + s.complete + s.pending + s.overdue, 0)
   const totalComplete = summaries.reduce((sum, s) => sum + s.complete, 0)
   const overallPercentComplete = totalAssessable > 0 ? Math.round((totalComplete / totalAssessable) * 100) : 100
 

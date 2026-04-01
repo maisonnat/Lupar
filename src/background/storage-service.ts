@@ -9,16 +9,10 @@ import {
   STORAGE_KEYS,
   ACTIVITY_LOG_MAX_ENTRIES,
 } from '@shared/types/storage'
-import type { ComplianceChecklist } from '@shared/types/compliance'
-
-function createDefaultChecklist(): ComplianceChecklist {
-  return {
-    assessment: 'pending',
-    lastAssessedDate: null,
-    dueDate: null,
-    notes: '',
-  }
-}
+import type { RegulationType } from '@shared/types/compliance'
+import { calculateDueDate } from '@options/utils/risk-calculator'
+import { createArticleChecklistMap } from '@shared/constants/regulations'
+import { detectTimezone } from '@shared/utils/date-utils'
 
 function createDefaultSettings(): AppSettings {
   return {
@@ -27,8 +21,28 @@ function createDefaultSettings(): AppSettings {
     responsiblePerson: '',
     installationDate: new Date().toISOString(),
     badgeNotifications: true,
+    requireDepartment: false,
+    snapshotFrequencyDays: 0,
+    timezone: detectTimezone(),
+    dateFormat: 'DD/MM/YYYY',
     customDomains: [],
     excludedDomains: [],
+    regulationConfig: {
+      euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+      iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+      coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+    },
+    auditModeConfig: {
+      auditMode: false,
+      auditModeActivatedAt: null,
+      auditModeActivatedBy: null,
+    },
+    adminProfile: {
+      adminName: '',
+      adminEmail: '',
+      adminRole: 'compliance_officer',
+      department: '',
+    },
   }
 }
 
@@ -84,8 +98,17 @@ export async function createDiscovery(
   toolName: string,
   category: DiscoveryRecord['category'],
   defaultRiskLevel: DiscoveryRecord['defaultRiskLevel'],
+  settings: AppSettings,
 ): Promise<DiscoveryRecord> {
   const now = new Date().toISOString()
+  const regulationKeys: RegulationType[] = ['euAiAct', 'iso42001', 'coSb205']
+  const complianceStatus: DiscoveryRecord['complianceStatus'] = {} as DiscoveryRecord['complianceStatus']
+  for (const regKey of regulationKeys) {
+    const config = settings.regulationConfig?.[regKey]
+    const enabled = config?.enabled ?? true
+    const dueDate = enabled ? calculateDueDate(regKey, settings) : null
+    complianceStatus[regKey] = createArticleChecklistMap(regKey, enabled, dueDate)
+  }
   const record: DiscoveryRecord = {
     id: uuidv4(),
     domain,
@@ -98,13 +121,10 @@ export async function createDiscovery(
     firstSeen: now,
     lastSeen: now,
     visitCount: 1,
-    complianceStatus: {
-      euAiAct: createDefaultChecklist(),
-      iso42001: createDefaultChecklist(),
-      coSb205: { ...createDefaultChecklist(), assessment: 'not_applicable' },
-    },
+    complianceStatus,
     notes: '',
     tags: [],
+    auditTrail: [],
   }
 
   await saveDiscovery(record)
@@ -195,6 +215,78 @@ export async function initializeDefaults(): Promise<void> {
   if (existingLog[STORAGE_KEYS.ACTIVITY_LOG] === undefined) {
     await writeKey(STORAGE_KEYS.ACTIVITY_LOG, [])
   }
+
+  const existingSnapshots = await chrome.storage.local.get(STORAGE_KEYS.COMPLIANCE_SNAPSHOTS)
+  if (existingSnapshots[STORAGE_KEYS.COMPLIANCE_SNAPSHOTS] === undefined) {
+    await writeKey(STORAGE_KEYS.COMPLIANCE_SNAPSHOTS, [])
+  }
+}
+
+function isLegacyComplianceStatus(
+  cs: unknown,
+): cs is Record<string, { assessment: string; lastAssessedDate: string | null; dueDate: string | null; notes: string }> {
+  if (typeof cs !== 'object' || cs === null) return false
+  const obj = cs as Record<string, unknown>
+  const regKeys = ['euAiAct', 'iso42001', 'coSb205']
+  return regKeys.every((key) => {
+    const val = obj[key]
+    return (
+      typeof val === 'object' &&
+      val !== null &&
+      'assessment' in val &&
+      !('art-4' in val) &&
+      !('iso-aims-inventory' in val)
+    )
+  })
+}
+
+async function migrateComplianceToPerArticle(): Promise<boolean> {
+  const discoveries = await getDiscoveries()
+  const settings = await getSettings()
+  const regulationKeys: RegulationType[] = ['euAiAct', 'iso42001', 'coSb205']
+  let migrated = false
+
+  for (const discovery of discoveries) {
+    if (!isLegacyComplianceStatus(discovery.complianceStatus as unknown)) continue
+
+    const legacyStatus = discovery.complianceStatus as unknown as Record<string, { assessment: string; lastAssessedDate: string | null; dueDate: string | null; notes: string }>
+
+    const newStatus: DiscoveryRecord['complianceStatus'] = {} as DiscoveryRecord['complianceStatus']
+    for (const regKey of regulationKeys) {
+      const old = legacyStatus[regKey]
+      const config = settings.regulationConfig?.[regKey]
+      const enabled = config?.enabled ?? true
+      const dueDate = enabled ? calculateDueDate(regKey, settings) : null
+      const articleMap = createArticleChecklistMap(regKey, enabled, dueDate)
+
+      if (old && (old.assessment === 'complete' || old.assessment === 'not_applicable')) {
+        for (const articleId of Object.keys(articleMap)) {
+          articleMap[articleId] = {
+            assessment: old.assessment,
+            lastAssessedDate: old.lastAssessedDate,
+            dueDate: old.dueDate,
+            notes: old.notes,
+          }
+        }
+      }
+
+      newStatus[regKey] = articleMap
+    }
+
+    discovery.complianceStatus = newStatus
+    migrated = true
+  }
+
+  if (migrated) {
+    await writeKey(STORAGE_KEYS.AI_DISCOVERIES, discoveries)
+  }
+
+  return migrated
+}
+
+export async function initializeWithMigration(): Promise<void> {
+  await initializeDefaults()
+  await migrateComplianceToPerArticle()
 }
 
 export async function exportAll(): Promise<StorageSchema> {
@@ -204,10 +296,14 @@ export async function exportAll(): Promise<StorageSchema> {
     getActivityLog(),
   ])
 
+  const snapshotsResult = await chrome.storage.local.get(STORAGE_KEYS.COMPLIANCE_SNAPSHOTS)
+  const snapshots = (snapshotsResult[STORAGE_KEYS.COMPLIANCE_SNAPSHOTS] as StorageSchema['compliance_snapshots']) ?? []
+
   return {
     ai_discoveries: discoveries,
     app_settings: settings,
     activity_log: log,
+    compliance_snapshots: snapshots,
   }
 }
 
@@ -222,10 +318,13 @@ export async function importAll(data: StorageSchema): Promise<void> {
     throw new StorageError('Esquema inválido: activity_log debe ser un array')
   }
 
+  const snapshots = Array.isArray(data.compliance_snapshots) ? data.compliance_snapshots : []
+
   await Promise.all([
     writeKey(STORAGE_KEYS.AI_DISCOVERIES, data.ai_discoveries),
     writeKey(STORAGE_KEYS.APP_SETTINGS, data.app_settings),
     writeKey(STORAGE_KEYS.ACTIVITY_LOG, data.activity_log),
+    writeKey(STORAGE_KEYS.COMPLIANCE_SNAPSHOTS, snapshots),
   ])
 }
 

@@ -1,11 +1,20 @@
 import type { DiscoveryRecord } from '@shared/types/discovery'
-import type { AppSettings } from '@shared/types/storage'
+import type { AppSettings, AuditModeConfig, AdminRole } from '@shared/types/storage'
 import type { RiskLevel } from '@shared/types/domain'
 import type { ComplianceMapResult, ComplianceGap } from '@options/utils/compliance-mapper'
 import { mapCompliance } from '@options/utils/compliance-mapper'
 import { calculateRiskScore } from '@options/utils/risk-calculator'
 import { RISK_LEVEL_LABELS, DISCOVERY_STATUS_LABELS } from '@shared/constants/risk-levels'
 import { CATEGORY_LABELS } from '@shared/constants/categories'
+import { AUDIT_FIELD_LABELS } from '@options/utils/audit-trail'
+import { formatDateLong, detectTimezone } from '@shared/utils/date-utils'
+
+const ADMIN_ROLE_LABELS: Record<AdminRole, string> = {
+  compliance_officer: 'Oficial de Compliance',
+  it_admin: 'Administrador IT',
+  auditor: 'Auditor',
+  executive: 'Ejecutivo',
+}
 
 const CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -71,21 +80,30 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('es-AR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-}
-
 function generateCover(
   settings: AppSettings,
   toolCount: number,
   date: string,
+  timezone: string,
 ): string {
   const company = escapeHtml(settings.companyName || 'Organización no configurada')
   const responsible = escapeHtml(settings.responsiblePerson || 'No asignado')
+
+  const profile = settings.adminProfile
+  const hasAdminProfile = profile && (profile.adminName || profile.adminEmail)
+  const adminName = hasAdminProfile ? escapeHtml(profile.adminName) : ''
+  const adminEmail = hasAdminProfile ? escapeHtml(profile.adminEmail) : ''
+  const adminRole = hasAdminProfile && profile.adminRole
+    ? escapeHtml(ADMIN_ROLE_LABELS[profile.adminRole])
+    : ''
+  const adminDept = hasAdminProfile ? escapeHtml(profile.department) : ''
+
+  const adminInfoLines = hasAdminProfile
+    ? `<div><strong>Responsable:</strong> ${adminName}${adminRole ? ` (${adminRole})` : ''}</div>
+       ${adminEmail ? `<div><strong>Email:</strong> ${adminEmail}</div>` : ''}
+       ${adminDept ? `<div><strong>Departamento:</strong> ${adminDept}</div>` : ''}`
+    : `<div><strong>Responsable:</strong> ${responsible}</div>`
+
   return `
     <div class="cover">
       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:24px;opacity:0.9">
@@ -96,8 +114,8 @@ function generateCover(
       <h2>Análisis de Herramientas de Inteligencia Artificial</h2>
       <div class="meta">
         <div><strong>Organización:</strong> ${company}</div>
-        <div><strong>Responsable:</strong> ${responsible}</div>
-        <div><strong>Fecha:</strong> ${formatDate(date)}</div>
+        ${adminInfoLines}
+        <div><strong>Fecha:</strong> ${formatDateLong(date, timezone)}</div>
         <div><strong>Herramientas analizadas:</strong> ${toolCount}</div>
         <div><strong>Versión del reporte:</strong> 1.0</div>
       </div>
@@ -167,7 +185,7 @@ function generateExecutiveSummary(
     </div>`
 }
 
-function generateInventoryTable(discoveries: DiscoveryRecord[]): string {
+function generateInventoryTable(discoveries: DiscoveryRecord[], timezone: string): string {
   const rows = discoveries
     .map((d) => {
       const risk: RiskLevel = d.userRiskLevel ?? d.defaultRiskLevel
@@ -177,7 +195,7 @@ function generateInventoryTable(discoveries: DiscoveryRecord[]): string {
         <td><span class="${badgeClass(risk)}">${RISK_LEVEL_LABELS[risk]}</span></td>
         <td><span class="${badgeClass(d.status)}">${DISCOVERY_STATUS_LABELS[d.status]}</span></td>
         <td>${d.visitCount}</td>
-        <td>${formatDate(d.lastSeen)}</td>
+        <td>${formatDateLong(d.lastSeen, timezone)}</td>
       </tr>`
     })
     .join('')
@@ -307,37 +325,148 @@ function generateRecommendations(compliance: ComplianceMapResult): string {
     </div>`
 }
 
+export async function generateContentHash(content: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(content)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function generateAuditBadge(auditModeConfig: AuditModeConfig, contentHash: string, timezone: string): string {
+  if (!auditModeConfig.auditMode) return ''
+
+  const activatedAt = auditModeConfig.auditModeActivatedAt
+    ? formatDateLong(auditModeConfig.auditModeActivatedAt, timezone)
+    : 'No disponible'
+
+  const activatedBy = auditModeConfig.auditModeActivatedBy || 'No especificado'
+
+  return `
+    <div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;padding:20px;margin:0 60px 20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M9 12l2 2 4-4"/>
+        </svg>
+        <span style="font-size:16px;font-weight:700;color:#92400e">MODO AUDITOR — DATOS EN SOLO LECTURA</span>
+      </div>
+      <div style="font-size:13px;color:#92400e;line-height:1.8">
+        <div><strong>Activado por:</strong> ${escapeHtml(activatedBy)}</div>
+        <div><strong>Fecha de activación:</strong> ${activatedAt}</div>
+        <div style="margin-top:8px">
+          <strong>Hash de integridad (SHA-256):</strong><br>
+          <code style="font-size:11px;background:#fffbeb;padding:4px 8px;border-radius:4px;word-break:break-all;display:inline-block;margin-top:4px">${contentHash}</code>
+        </div>
+      </div>
+    </div>`
+}
+
+function generateAuditTrailSection(discoveries: DiscoveryRecord[], timezone: string): string {
+  const toolsWithTrail = discoveries.filter((d) => d.auditTrail.length > 0)
+
+  if (toolsWithTrail.length === 0) return ''
+
+  const toolSections = toolsWithTrail.map((d) => {
+    const sortedTrail = [...d.auditTrail].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    )
+    const recentTrail = sortedTrail.slice(0, 20)
+
+    const rows = recentTrail
+      .map((entry) => `<tr>
+        <td style="white-space:nowrap">${formatDateLong(entry.timestamp, timezone)}</td>
+        <td><span class="badge badge-detected">${escapeHtml(AUDIT_FIELD_LABELS[entry.field])}</span></td>
+        <td>${escapeHtml(entry.oldValue)}</td>
+        <td>${escapeHtml(entry.newValue)}</td>
+      </tr>`)
+      .join('')
+
+    return `
+      <div style="margin-bottom:24px">
+        <h3 style="font-size:14px;font-weight:600;color:#374151;margin-bottom:8px">${escapeHtml(d.toolName)}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Campo</th>
+              <th>Valor anterior</th>
+              <th>Valor nuevo</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`
+  }).join('')
+
+  return `
+    <div class="section">
+      <h2 class="section-title">Historial de Cambios (Audit Trail)</h2>
+      ${toolSections}
+    </div>`
+}
+
 export function generateReport(
   discoveries: DiscoveryRecord[],
   settings: AppSettings,
 ): string {
   const now = new Date().toISOString()
+  const timezone = settings.timezone ?? detectTimezone()
   const riskScore = calculateRiskScore(discoveries)
   const compliance = mapCompliance(discoveries)
+  const isAuditMode = settings.auditModeConfig?.auditMode ?? false
+
+  const auditPlaceholder = isAuditMode
+    ? '<div id="audit-badge-placeholder" data-audit-mode="true"></div>'
+    : ''
 
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reporte de Cumplimiento IA — ${formatDate(now)}</title>
+  <title>Reporte de Cumplimiento IA — ${formatDateLong(now, timezone)}</title>
   <style>${CSS}</style>
 </head>
 <body>
   <div class="page">
-    ${generateCover(settings, discoveries.length, now)}
+    ${generateCover(settings, discoveries.length, now, timezone)}
+    ${auditPlaceholder}
     ${generateExecutiveSummary(discoveries, riskScore, compliance)}
-    ${generateInventoryTable(discoveries)}
+    ${generateInventoryTable(discoveries, timezone)}
     ${generateComplianceMap(compliance)}
     ${generateRecommendations(compliance)}
+    ${generateAuditTrailSection(discoveries, timezone)}
     <div class="footer">
-      Generado por AI Compliance Tracker el ${formatDate(now)} · Reporte autocontenido — funciona offline
+      Generado por AI Compliance Tracker el ${formatDateLong(now, timezone)} · Reporte autocontenido — funciona offline
     </div>
   </div>
 </body>
 </html>`
 
   return html
+}
+
+export async function generateReportWithHash(
+  discoveries: DiscoveryRecord[],
+  settings: AppSettings,
+): Promise<string> {
+  const html = generateReport(discoveries, settings)
+  const isAuditMode = settings.auditModeConfig?.auditMode ?? false
+
+  if (!isAuditMode) return html
+
+  const contentHash = await generateContentHash(html)
+  const auditBadge = generateAuditBadge(
+    settings.auditModeConfig,
+    contentHash,
+    settings.timezone ?? detectTimezone(),
+  )
+
+  return html.replace(
+    '<div id="audit-badge-placeholder" data-audit-mode="true"></div>',
+    auditBadge,
+  )
 }
 
 export function downloadReport(html: string, date?: Date): void {

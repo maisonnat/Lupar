@@ -1,13 +1,52 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useStorage } from '@options/hooks/useStorage'
 import { STORAGE_KEYS } from '@shared/types/storage'
-import type { AppSettings, CustomDomainEntry } from '@shared/types/storage'
+import type { AppSettings, CustomDomainEntry, AdminRole, DateFormat } from '@shared/types/storage'
 import type { AICategory, RiskLevel } from '@shared/types/domain'
 import { CATEGORY_LABELS } from '@shared/constants/categories'
 import {
   RISK_LEVEL_LABELS,
   RISK_LEVEL_COLORS,
 } from '@shared/constants/risk-levels'
+import { formatDateTimeLong } from '@shared/utils/date-utils'
+import { detectTimezone } from '@shared/utils/date-utils'
+
+const ADMIN_ROLE_LABELS: Record<AdminRole, string> = {
+  compliance_officer: 'Oficial de Compliance',
+  it_admin: 'Administrador IT',
+  auditor: 'Auditor',
+  executive: 'Ejecutivo',
+}
+
+const TIMEZONE_OPTIONS = [
+  { value: 'America/Argentina/Buenos_Aires', label: 'Argentina (Buenos Aires)' },
+  { value: 'America/Argentina/Cordoba', label: 'Argentina (Córdoba)' },
+  { value: 'America/Argentina/Mendoza', label: 'Argentina (Mendoza)' },
+  { value: 'America/Bogota', label: 'Colombia (Bogotá)' },
+  { value: 'America/Mexico_City', label: 'México (Ciudad de México)' },
+  { value: 'America/Lima', label: 'Perú (Lima)' },
+  { value: 'America/Santiago', label: 'Chile (Santiago)' },
+  { value: 'America/Montevideo', label: 'Uruguay (Montevideo)' },
+  { value: 'America/Caracas', label: 'Venezuela (Caracas)' },
+  { value: 'America/Sao_Paulo', label: 'Brasil (São Paulo)' },
+  { value: 'America/New_York', label: 'EE.UU. (New York, EST)' },
+  { value: 'America/Chicago', label: 'EE.UU. (Chicago, CST)' },
+  { value: 'America/Los_Angeles', label: 'EE.UU. (Los Angeles, PST)' },
+  { value: 'Europe/Madrid', label: 'España (Madrid)' },
+  { value: 'Europe/London', label: 'Reino Unido (Londres)' },
+  { value: 'Europe/Paris', label: 'Francia (París)' },
+  { value: 'Europe/Berlin', label: 'Alemania (Berlín)' },
+  { value: 'Asia/Tokyo', label: 'Japón (Tokio)' },
+  { value: 'Asia/Shanghai', label: 'China (Shanghái)' },
+  { value: 'Australia/Sydney', label: 'Australia (Sídney)' },
+  { value: 'UTC', label: 'UTC' },
+] as const
+
+const DATE_FORMAT_OPTIONS: { value: DateFormat; label: string }[] = [
+  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (01/04/2026)' },
+  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (04/01/2026)' },
+  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2026-04-01)' },
+]
 
 type FeedbackType = 'success' | 'error'
 
@@ -18,15 +57,27 @@ interface FeedbackState {
 
 type TextField = 'companyName' | 'responsiblePerson'
 
+type AdminProfileField = 'adminName' | 'adminEmail' | 'department'
+
 export default function Settings() {
   const { settings } = useStorage()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
   const [showClearModal, setShowClearModal] = useState(false)
+  const [showAuditActivateModal, setShowAuditActivateModal] = useState(false)
 
   const [companyName, setCompanyName] = useState('')
   const [responsiblePerson, setResponsiblePerson] = useState('')
   const [badgeNotifications, setBadgeNotifications] = useState(true)
+  const [requireDepartment, setRequireDepartment] = useState(false)
+  const [snapshotFrequencyDays, setSnapshotFrequencyDays] = useState(0)
+  const [timezone, setTimezone] = useState('')
+  const [dateFormat, setDateFormat] = useState<DateFormat>('DD/MM/YYYY')
+
+  const [adminName, setAdminName] = useState('')
+  const [adminEmail, setAdminEmail] = useState('')
+  const [adminRole, setAdminRole] = useState<AdminRole>('compliance_officer')
+  const [adminDepartment, setAdminDepartment] = useState('')
 
   const [customDomain, setCustomDomain] = useState('')
   const [customToolName, setCustomToolName] = useState('')
@@ -42,6 +93,14 @@ export default function Settings() {
       setCompanyName(settings.companyName)
       setResponsiblePerson(settings.responsiblePerson)
       setBadgeNotifications(settings.badgeNotifications)
+      setRequireDepartment(settings.requireDepartment ?? false)
+      setSnapshotFrequencyDays(settings.snapshotFrequencyDays ?? 0)
+      setTimezone(settings.timezone ?? detectTimezone())
+      setDateFormat(settings.dateFormat ?? 'DD/MM/YYYY')
+      setAdminName(settings.adminProfile?.adminName ?? '')
+      setAdminEmail(settings.adminProfile?.adminEmail ?? '')
+      setAdminRole(settings.adminProfile?.adminRole ?? 'compliance_officer')
+      setAdminDepartment(settings.adminProfile?.department ?? '')
       initialized.current = true
     }
   }, [settings])
@@ -81,10 +140,90 @@ export default function Settings() {
     [settings, companyName, responsiblePerson, updateSettings],
   )
 
+  const handleAdminBlur = useCallback(
+    (field: AdminProfileField) => {
+      return async () => {
+        if (!settings) return
+        const valueMap: Record<AdminProfileField, string> = {
+          adminName,
+          adminEmail,
+          department: adminDepartment,
+        }
+        const currentProfile = settings.adminProfile
+        if (currentProfile[field] !== valueMap[field]) {
+          await updateSettings({
+            adminProfile: { ...currentProfile, [field]: valueMap[field] },
+          })
+        }
+      }
+    },
+    [settings, adminName, adminEmail, adminDepartment, updateSettings],
+  )
+
+  async function handleAdminRoleChange(newRole: AdminRole) {
+    if (!settings) return
+    setAdminRole(newRole)
+    await updateSettings({
+      adminProfile: { ...settings.adminProfile, adminRole: newRole },
+    })
+  }
+
   async function handleBadgeToggle() {
     const newValue = !badgeNotifications
     setBadgeNotifications(newValue)
     await updateSettings({ badgeNotifications: newValue })
+  }
+
+  async function handleRequireDepartmentToggle() {
+    const newValue = !requireDepartment
+    setRequireDepartment(newValue)
+    await updateSettings({ requireDepartment: newValue })
+  }
+
+  async function handleSnapshotFrequencyChange(value: string) {
+    const num = value === '' ? 0 : Math.max(0, Math.min(365, parseInt(value, 10) || 0))
+    setSnapshotFrequencyDays(num)
+    await updateSettings({ snapshotFrequencyDays: num })
+  }
+
+  async function handleTimezoneChange(newTimezone: string) {
+    setTimezone(newTimezone)
+    await updateSettings({ timezone: newTimezone })
+  }
+
+  async function handleDateFormatChange(newFormat: DateFormat) {
+    setDateFormat(newFormat)
+    await updateSettings({ dateFormat: newFormat })
+  }
+
+  function handleAuditToggle() {
+    if (!settings) return
+    const isCurrentlyActive = settings.auditModeConfig?.auditMode ?? false
+    if (isCurrentlyActive) {
+      updateSettings({
+        auditModeConfig: {
+          auditMode: false,
+          auditModeActivatedAt: null,
+          auditModeActivatedBy: null,
+        },
+      })
+      return
+    }
+    setShowAuditActivateModal(true)
+  }
+
+  async function handleActivateAuditMode() {
+    if (!settings) return
+    const activatedBy = settings.adminProfile?.adminName || settings.responsiblePerson || null
+    await updateSettings({
+      auditModeConfig: {
+        auditMode: true,
+        auditModeActivatedAt: new Date().toISOString(),
+        auditModeActivatedBy: activatedBy,
+      },
+    })
+    setShowAuditActivateModal(false)
+    showFeedbackMessage('Modo auditor activado — datos en solo lectura', 'success')
   }
 
   function resetCustomDomainForm() {
@@ -180,6 +319,7 @@ export default function Settings() {
         STORAGE_KEYS.AI_DISCOVERIES,
         STORAGE_KEYS.APP_SETTINGS,
         STORAGE_KEYS.ACTIVITY_LOG,
+        STORAGE_KEYS.COMPLIANCE_SNAPSHOTS,
       ])
 
       const blob = new Blob([JSON.stringify(result, null, 2)], {
@@ -222,10 +362,13 @@ export default function Settings() {
         return
       }
 
+      const snapshots = Array.isArray(data.compliance_snapshots) ? data.compliance_snapshots : []
+
       await chrome.storage.local.set({
         [STORAGE_KEYS.AI_DISCOVERIES]: data.ai_discoveries,
         [STORAGE_KEYS.APP_SETTINGS]: data.app_settings,
         [STORAGE_KEYS.ACTIVITY_LOG]: data.activity_log,
+        [STORAGE_KEYS.COMPLIANCE_SNAPSHOTS]: snapshots,
       })
 
       initialized.current = false
@@ -251,19 +394,48 @@ export default function Settings() {
       responsiblePerson: '',
       installationDate: new Date().toISOString(),
       badgeNotifications: true,
+      requireDepartment: false,
+      snapshotFrequencyDays: 0,
+      timezone: detectTimezone(),
+      dateFormat: 'DD/MM/YYYY',
       customDomains: [],
       excludedDomains: [],
+      regulationConfig: {
+        euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+        iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+        coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+      },
+      auditModeConfig: {
+        auditMode: false,
+        auditModeActivatedAt: null,
+        auditModeActivatedBy: null,
+      },
+      adminProfile: {
+        adminName: '',
+        adminEmail: '',
+        adminRole: 'compliance_officer',
+        department: '',
+      },
     }
 
     await chrome.storage.local.set({
       [STORAGE_KEYS.AI_DISCOVERIES]: [],
       [STORAGE_KEYS.APP_SETTINGS]: defaultSettings,
       [STORAGE_KEYS.ACTIVITY_LOG]: [],
+      [STORAGE_KEYS.COMPLIANCE_SNAPSHOTS]: [],
     })
 
     setCompanyName('')
     setResponsiblePerson('')
     setBadgeNotifications(true)
+    setRequireDepartment(false)
+    setSnapshotFrequencyDays(0)
+    setTimezone(detectTimezone())
+    setDateFormat('DD/MM/YYYY')
+    setAdminName('')
+    setAdminEmail('')
+    setAdminRole('compliance_officer')
+    setAdminDepartment('')
     resetCustomDomainForm()
     setExcludedDomain('')
     setShowClearModal(false)
@@ -273,6 +445,9 @@ export default function Settings() {
   }
 
   if (!settings) return null
+
+  const isAuditMode = settings.auditModeConfig?.auditMode ?? false
+  const disabledSectionClass = isAuditMode ? 'opacity-50 pointer-events-none' : ''
 
   return (
     <div>
@@ -344,15 +519,223 @@ export default function Settings() {
               Mostrar contador en badge de la extensión
             </span>
           </div>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={requireDepartment}
+              onClick={handleRequireDepartmentToggle}
+              data-testid="require-department-toggle"
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                requireDepartment ? 'bg-blue-600' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  requireDepartment ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            <span className="text-sm text-gray-600">
+              Exigir departamento al guardar herramientas
+            </span>
+          </div>
         </section>
 
         <section className="bg-white border border-gray-200 rounded-lg p-5">
+          <h2 className="text-sm font-medium text-gray-700 mb-2">
+            Snapshots de Cumplimiento
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Guarda periódicamente el estado de cumplimiento para rastrear la evolución en el tiempo.
+            Los snapshots se crean automáticamente al generar reportes.
+          </p>
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-600 whitespace-nowrap">
+              Cada
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="365"
+              value={snapshotFrequencyDays || ''}
+              placeholder="0"
+              onChange={(e) => handleSnapshotFrequencyChange(e.target.value)}
+              className="w-20 border border-gray-300 rounded-md px-3 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+              data-testid="snapshot-frequency-input"
+            />
+            <span className="text-sm text-gray-600">
+              días (0 = deshabilitado)
+            </span>
+          </div>
+        </section>
+
+        <section className="bg-white border border-gray-200 rounded-lg p-5">
+          <h2 className="text-sm font-medium text-gray-700 mb-2">
+            Formato de Fecha y Hora
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Configura la zona horaria y el formato de fecha para todo el sistema.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Zona horaria
+              </label>
+              <select
+                value={timezone}
+                onChange={(e) => handleTimezoneChange(e.target.value)}
+                data-testid="timezone-select"
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {TIMEZONE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Formato de fecha
+              </label>
+              <select
+                value={dateFormat}
+                onChange={(e) => handleDateFormatChange(e.target.value as DateFormat)}
+                data-testid="date-format-select"
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {DATE_FORMAT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white border border-gray-200 rounded-lg p-5">
+          <h2 className="text-sm font-medium text-gray-700 mb-2">
+            Perfil del Administrador
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Datos del responsable de compliance. Se incluyen en los reportes y el historial de cambios.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Nombre completo
+              </label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Ingrese el nombre..."
+                value={adminName}
+                onChange={(e) => setAdminName(e.target.value)}
+                onBlur={handleAdminBlur('adminName')}
+                data-testid="admin-name-input"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="admin@empresa.com"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                onBlur={handleAdminBlur('adminEmail')}
+                data-testid="admin-email-input"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Rol
+              </label>
+              <select
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={adminRole}
+                onChange={(e) => handleAdminRoleChange(e.target.value as AdminRole)}
+                data-testid="admin-role-select"
+              >
+                {Object.entries(ADMIN_ROLE_LABELS).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Departamento
+              </label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Ej: Legal, IT, Compliance..."
+                value={adminDepartment}
+                onChange={(e) => setAdminDepartment(e.target.value)}
+                onBlur={handleAdminBlur('department')}
+                data-testid="admin-department-input"
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className={`bg-white border border-gray-200 rounded-lg p-5 ${isAuditMode ? 'border-amber-400 bg-amber-50/30' : ''}`}>
+          <h2 className="text-sm font-medium text-gray-700 mb-2">
+            Modo Auditor
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Congela todos los datos en solo lectura para revisión de auditoría.
+            El reporte generado incluirá un hash de integridad SHA-256.
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isAuditMode}
+              onClick={handleAuditToggle}
+              data-testid="audit-mode-toggle"
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                isAuditMode ? 'bg-amber-500' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  isAuditMode ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            <span className="text-sm text-gray-600">
+              {isAuditMode ? 'Modo auditor activo' : 'Activar modo auditor'}
+            </span>
+          </div>
+          {isAuditMode && settings.auditModeConfig.auditModeActivatedAt && (
+            <p className="mt-3 text-xs text-amber-700">
+              Activado el {formatDateTimeLong(settings.auditModeConfig.auditModeActivatedAt, settings.timezone ?? detectTimezone())}
+              {settings.auditModeConfig.auditModeActivatedBy && (
+                <> por <strong>{settings.auditModeConfig.auditModeActivatedBy}</strong></>
+              )}
+            </p>
+          )}
+        </section>
+
+        <section className={`bg-white border border-gray-200 rounded-lg p-5 ${disabledSectionClass}`}>
           <h2 className="text-sm font-medium text-gray-700 mb-2">
             Dominios Personalizados
           </h2>
           <p className="text-sm text-gray-500 mb-4">
             Agregue dominios de IA internos no cubiertos por el registro
             automático.
+            {isAuditMode && (
+              <span className="block mt-1 text-amber-600 text-xs font-medium">
+                Edición deshabilitada — modo auditor activo
+              </span>
+            )}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
@@ -453,12 +836,17 @@ export default function Settings() {
           )}
         </section>
 
-        <section className="bg-white border border-gray-200 rounded-lg p-5">
+        <section className={`bg-white border border-gray-200 rounded-lg p-5 ${disabledSectionClass}`}>
           <h2 className="text-sm font-medium text-gray-700 mb-2">
             Dominios Excluidos
           </h2>
           <p className="text-sm text-gray-500 mb-4">
             Dominios que serán ignorados durante la detección automática.
+            {isAuditMode && (
+              <span className="block mt-1 text-amber-600 text-xs font-medium">
+                Edición deshabilitada — modo auditor activo
+              </span>
+            )}
           </p>
 
           <div className="flex gap-3 mb-4">
@@ -523,7 +911,9 @@ export default function Settings() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+              disabled={isAuditMode}
+              className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isAuditMode ? 'Deshabilitado en modo auditor' : undefined}
             >
               Importar Backup
             </button>
@@ -537,7 +927,9 @@ export default function Settings() {
             <button
               type="button"
               onClick={() => setShowClearModal(true)}
-              className="border border-red-300 text-red-600 px-4 py-2 rounded-md text-sm font-medium hover:bg-red-50 transition-colors"
+              disabled={isAuditMode}
+              className="border border-red-300 text-red-600 px-4 py-2 rounded-md text-sm font-medium hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isAuditMode ? 'Deshabilitado en modo auditor' : undefined}
             >
               Limpiar Todo
             </button>
@@ -570,6 +962,45 @@ export default function Settings() {
                 className="bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700 transition-colors"
               >
                 Sí, eliminar todo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAuditActivateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Activar Modo Auditor
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Al activar el modo auditor se bloqueará la edición de TODOS los datos:
+            </p>
+            <ul className="text-sm text-gray-600 mb-6 list-disc list-inside space-y-1">
+              <li>No se podrán modificar herramientas detectadas</li>
+              <li>No se podrán cambiar estados de compliance</li>
+              <li>No se podrán agregar o eliminar dominios</li>
+              <li>No se podrán importar backups ni limpiar datos</li>
+            </ul>
+            <p className="text-sm text-amber-700 font-medium mb-6">
+              El reporte generado incluirá un hash SHA-256 de integridad.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAuditActivateModal(false)}
+                className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleActivateAuditMode}
+                className="bg-amber-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-amber-700 transition-colors"
+                data-testid="activate-audit-mode-btn"
+              >
+                Activar Modo Auditor
               </button>
             </div>
           </div>

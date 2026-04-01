@@ -1,7 +1,95 @@
 import type { RiskLevel } from '@shared/types/domain'
-import type { DiscoveryStatus } from '@shared/types/discovery'
-import type { DiscoveryRecord } from '@shared/types/discovery'
+import type { DiscoveryStatus, DiscoveryRecord } from '@shared/types/discovery'
+import type { AppSettings } from '@shared/types/storage'
+import type { RegulationType, ComplianceChecklist } from '@shared/types/compliance'
 import { RISK_WEIGHTS, STATUS_WEIGHTS, RISK_THRESHOLDS } from '@shared/constants/risk-levels'
+import { REGULATIONS } from '@shared/constants/regulations'
+
+export type DeadlineUrgency = 'overdue' | 'this_week' | 'this_month' | 'upcoming'
+
+export interface UpcomingDeadline {
+  toolName: string
+  toolId: string
+  regulationKey: RegulationType
+  regulationLabel: string
+  articleId: string
+  articleTitle: string
+  dueDate: string
+  daysRemaining: number
+  riskLevel: RiskLevel
+  urgency: DeadlineUrgency
+}
+
+const DEFAULT_DAYS_AHEAD = 90
+
+function classifyUrgency(daysRemaining: number): DeadlineUrgency {
+  if (daysRemaining < 0) return 'overdue'
+  if (daysRemaining <= 7) return 'this_week'
+  if (daysRemaining <= 30) return 'this_month'
+  return 'upcoming'
+}
+
+export function getUpcomingDeadlines(
+  discoveries: DiscoveryRecord[],
+  settings: AppSettings,
+  daysAhead: number = DEFAULT_DAYS_AHEAD,
+): UpcomingDeadline[] {
+  const now = new Date()
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() + daysAhead)
+
+  const deadlines: UpcomingDeadline[] = []
+
+  for (const discovery of discoveries) {
+    if (discovery.status === 'dismissed') continue
+
+    const effectiveRisk: RiskLevel = discovery.userRiskLevel ?? discovery.defaultRiskLevel
+
+    for (const regKey of Object.keys(discovery.complianceStatus) as RegulationType[]) {
+      const config = settings.regulationConfig?.[regKey]
+      if (!config?.enabled) continue
+
+      const articleMap = discovery.complianceStatus[regKey]
+      const regulationInfo = REGULATIONS[regKey]
+
+      for (const articleId of Object.keys(articleMap)) {
+        const checklist = articleMap[articleId]
+
+        if (
+          checklist.assessment === 'complete' ||
+          checklist.assessment === 'not_applicable' ||
+          !checklist.dueDate
+        ) {
+          continue
+        }
+
+        const dueDate = new Date(checklist.dueDate)
+        if (dueDate > cutoff) continue
+
+        const daysRemaining = Math.ceil(
+          (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+        )
+
+        const articleInfo = regulationInfo.articles.find((a) => a.id === articleId)
+
+        deadlines.push({
+          toolName: discovery.toolName,
+          toolId: discovery.id,
+          regulationKey: regKey,
+          regulationLabel: regulationInfo.shortName,
+          articleId,
+          articleTitle: articleInfo?.title ?? articleId,
+          dueDate: checklist.dueDate,
+          daysRemaining,
+          riskLevel: effectiveRisk,
+          urgency: classifyUrgency(daysRemaining),
+        })
+      }
+    }
+  }
+
+  return deadlines.sort((a, b) => a.daysRemaining - b.daysRemaining)
+}
 
 export interface RiskScoreResult {
   score: number
@@ -80,4 +168,90 @@ export function countByStatus(
     dismissed: discoveries.filter((d) => d.status === 'dismissed').length,
     authorized: discoveries.filter((d) => d.status === 'authorized').length,
   }
+}
+
+export function calculateDueDate(
+  regulationKey: RegulationType,
+  settings: AppSettings,
+): string | null {
+  const config = settings.regulationConfig?.[regulationKey]
+  if (!config?.enabled) {
+    return null
+  }
+
+  const offsetDays = config.customDueDateOffsetDays ?? 90
+  const dueDate = new Date()
+  dueDate.setDate(dueDate.getDate() + offsetDays)
+  return dueDate.toISOString()
+}
+
+export function isChecklistOverdue(checklist: ComplianceChecklist): boolean {
+  if (checklist.assessment === 'overdue') {
+    return true
+  }
+
+  if (!checklist.dueDate) {
+    return false
+  }
+
+  if (checklist.assessment === 'complete' || checklist.assessment === 'not_applicable') {
+    return false
+  }
+
+  return new Date(checklist.dueDate) < new Date()
+}
+
+export function hasOverdueArticle(articleMap: Record<string, ComplianceChecklist>): boolean {
+  return Object.values(articleMap).some(isChecklistOverdue)
+}
+
+export function getOverdueDiscoveries(
+  discoveries: DiscoveryRecord[],
+  settings: AppSettings,
+): DiscoveryRecord[] {
+  return discoveries.filter((discovery) => {
+    return Object.entries(discovery.complianceStatus).some(([regKey, articleMap]) => {
+      const config = settings.regulationConfig?.[regKey as RegulationType]
+      if (!config?.enabled) {
+        return false
+      }
+      return hasOverdueArticle(articleMap)
+    })
+  })
+}
+
+export function markOverdueAssessments(
+  discoveries: DiscoveryRecord[],
+  settings: AppSettings,
+): DiscoveryRecord[] {
+  return discoveries.map((discovery) => {
+    const updatedCompliance = { ...discovery.complianceStatus }
+
+    for (const regKey of Object.keys(updatedCompliance) as RegulationType[]) {
+      const config = settings.regulationConfig?.[regKey]
+      if (!config?.enabled) {
+        continue
+      }
+
+      const articleMap = updatedCompliance[regKey]
+      const updatedMap = { ...articleMap }
+
+      for (const articleId of Object.keys(updatedMap)) {
+        const checklist = updatedMap[articleId]
+        if (isChecklistOverdue(checklist)) {
+          updatedMap[articleId] = {
+            ...checklist,
+            assessment: 'overdue',
+          }
+        }
+      }
+
+      updatedCompliance[regKey] = updatedMap
+    }
+
+    return {
+      ...discovery,
+      complianceStatus: updatedCompliance,
+    }
+  })
 }

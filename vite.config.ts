@@ -32,6 +32,7 @@ export default defineConfig({
       '@background': path.resolve(__dirname, 'src/background'),
       '@options': path.resolve(__dirname, 'src/options'),
       '@shared': path.resolve(__dirname, 'src/shared'),
+      '@test-utils': path.resolve(__dirname, 'src/test-utils'),
     },
   },
 })

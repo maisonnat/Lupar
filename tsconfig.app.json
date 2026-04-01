@@ -27,7 +27,8 @@
       "@/*": ["src/*"],
       "@background/*": ["src/background/*"],
       "@options/*": ["src/options/*"],
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["src/shared/*"],
+      "@test-utils/*": ["src/test-utils/*"]
     }
   },
   "include": ["src"]

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mapCompliance } from '@options/utils/compliance-mapper'
 import type { DiscoveryRecord } from '@shared/types/discovery'
+import { createMockComplianceStatus } from '@test-utils/mock-helpers'
 
 function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecord {
   return {
@@ -15,13 +16,10 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     firstSeen: '2026-03-15T09:00:00.000Z',
     lastSeen: '2026-03-15T09:00:00.000Z',
     visitCount: 5,
-    complianceStatus: {
-      euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
-    },
+    complianceStatus: createMockComplianceStatus(),
     notes: '',
     tags: [],
+    auditTrail: [],
     ...overrides,
   }
 }
@@ -36,7 +34,7 @@ describe('mapCompliance', () => {
   it('should calculate percentComplete correctly', () => {
     const result = mapCompliance([makeDiscovery()])
     const euSummary = result.summaries.find((s) => s.regulationId === 'euAiAct')!
-    expect(euSummary.pending).toBe(1)
+    expect(euSummary.pending).toBe(2)
     expect(euSummary.complete).toBe(0)
     expect(euSummary.percentComplete).toBe(0)
   })
@@ -46,15 +44,15 @@ describe('mapCompliance', () => {
       makeDiscovery({
         id: '1',
         complianceStatus: {
-          euAiAct: { assessment: 'complete', lastAssessedDate: '2026-03-15', dueDate: null, notes: '' },
-          iso42001: { assessment: 'complete', lastAssessedDate: '2026-03-15', dueDate: null, notes: '' },
-          coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
+          euAiAct: Object.fromEntries(['art-4','art-6','art-9','art-11','art-12','art-26','art-27','art-50'].map(id => [id, { assessment: 'complete' as const, lastAssessedDate: '2026-03-15', dueDate: null, notes: '' }])),
+          iso42001: Object.fromEntries(['iso-aims-inventory','iso-risk-assessment','iso-documentation','iso-monitoring','iso-governance'].map(id => [id, { assessment: 'complete' as const, lastAssessedDate: '2026-03-15', dueDate: null, notes: '' }])),
+          coSb205: Object.fromEntries(['co-risk-policy','co-impact-assessment','co-disclosure','co-public-statement','co-affirmative-defense'].map(id => [id, { assessment: 'not_applicable' as const, lastAssessedDate: null, dueDate: null, notes: '' }])),
         },
       }),
     ])
 
     const euSummary = result.summaries.find((s) => s.regulationId === 'euAiAct')!
-    expect(euSummary.complete).toBe(1)
+    expect(euSummary.complete).toBe(2)
     expect(euSummary.percentComplete).toBe(100)
   })
 
@@ -71,9 +69,9 @@ describe('mapCompliance', () => {
     const result = mapCompliance([
       makeDiscovery({
         complianceStatus: {
-          euAiAct: { assessment: 'complete', lastAssessedDate: '2026-03-15', dueDate: null, notes: '' },
-          iso42001: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
-          coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
+          euAiAct: Object.fromEntries(['art-4','art-6','art-9','art-11','art-12','art-26','art-27','art-50'].map(id => [id, { assessment: 'complete' as const, lastAssessedDate: '2026-03-15', dueDate: null, notes: '' }])),
+          iso42001: Object.fromEntries(['iso-aims-inventory','iso-risk-assessment','iso-documentation','iso-monitoring','iso-governance'].map(id => [id, { assessment: 'not_applicable' as const, lastAssessedDate: null, dueDate: null, notes: '' }])),
+          coSb205: Object.fromEntries(['co-risk-policy','co-impact-assessment','co-disclosure','co-public-statement','co-affirmative-defense'].map(id => [id, { assessment: 'not_applicable' as const, lastAssessedDate: null, dueDate: null, notes: '' }])),
         },
       }),
     ])
@@ -82,14 +80,13 @@ describe('mapCompliance', () => {
 
   it('should sort gaps by severity (overdue first)', () => {
     const result = mapCompliance([
-      makeDiscovery({ id: '1', complianceStatus: {
-        ...makeDiscovery().complianceStatus,
-        euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      }}),
-      makeDiscovery({ id: '2', complianceStatus: {
-        ...makeDiscovery().complianceStatus,
-        euAiAct: { assessment: 'overdue', lastAssessedDate: null, dueDate: '2026-01-01', notes: '' },
-      }}),
+      makeDiscovery({ id: '1' }),
+      makeDiscovery({ id: '2', complianceStatus: createMockComplianceStatus({
+        euAiAct: {
+          ...createMockComplianceStatus().euAiAct,
+          'art-4': { assessment: 'overdue' as const, lastAssessedDate: null, dueDate: '2026-01-01', notes: '' },
+        },
+      })}),
     ])
 
     const euGaps = result.allGaps.filter((g) => g.regulationId === 'euAiAct')
@@ -107,14 +104,14 @@ describe('mapCompliance', () => {
     const result = mapCompliance([
       makeDiscovery({
         complianceStatus: {
-          euAiAct: { assessment: 'complete', lastAssessedDate: '2026-03-15', dueDate: null, notes: '' },
-          iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-          coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
+          euAiAct: Object.fromEntries(['art-4','art-6','art-9','art-11','art-12','art-26','art-27','art-50'].map(id => [id, { assessment: 'complete' as const, lastAssessedDate: '2026-03-15', dueDate: null, notes: '' }])),
+          iso42001: Object.fromEntries(['iso-aims-inventory','iso-risk-assessment','iso-documentation','iso-monitoring','iso-governance'].map(id => [id, { assessment: 'pending' as const, lastAssessedDate: null, dueDate: null, notes: '' }])),
+          coSb205: Object.fromEntries(['co-risk-policy','co-impact-assessment','co-disclosure','co-public-statement','co-affirmative-defense'].map(id => [id, { assessment: 'not_applicable' as const, lastAssessedDate: null, dueDate: null, notes: '' }])),
         },
       }),
     ])
 
-    expect(result.overallPercentComplete).toBe(50)
+    expect(result.overallPercentComplete).toBe(29)
   })
 
   it('should handle empty discoveries', () => {
@@ -132,11 +129,9 @@ describe('mapCompliance', () => {
     const result = mapCompliance([
       makeDiscovery({
         defaultRiskLevel: 'prohibited',
-        complianceStatus: {
-          euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-          iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-          coSb205: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-        },
+        complianceStatus: createMockComplianceStatus({
+          coSb205: Object.fromEntries(['co-risk-policy','co-impact-assessment','co-disclosure','co-public-statement','co-affirmative-defense'].map(id => [id, { assessment: 'pending' as const, lastAssessedDate: null, dueDate: null, notes: '' }])),
+        }),
       }),
     ])
 
@@ -149,11 +144,12 @@ describe('mapCompliance', () => {
   it('should generate urgent action for overdue assessment', () => {
     const result = mapCompliance([
       makeDiscovery({
-        complianceStatus: {
-          euAiAct: { assessment: 'overdue', lastAssessedDate: null, dueDate: '2026-01-01', notes: '' },
-          iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-          coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
-        },
+        complianceStatus: createMockComplianceStatus({
+          euAiAct: {
+            ...createMockComplianceStatus().euAiAct,
+            'art-4': { assessment: 'overdue' as const, lastAssessedDate: null, dueDate: '2026-01-01', notes: '' },
+          },
+        }),
       }),
     ])
 
@@ -171,7 +167,7 @@ describe('mapCompliance', () => {
 
     const euSummary = result.summaries.find((s) => s.regulationId === 'euAiAct')!
     expect(euSummary.totalTools).toBe(3)
-    expect(euSummary.pending).toBe(3)
+    expect(euSummary.pending).toBe(11)
     expect(result.totalGaps).toBeGreaterThan(0)
   })
 })

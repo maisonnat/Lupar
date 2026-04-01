@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { generateReport } from '@options/utils/report-generator'
+import { generateReport, generateContentHash, generateReportWithHash } from '@options/utils/report-generator'
+import { createMockComplianceStatus } from '@test-utils/mock-helpers'
 import type { DiscoveryRecord } from '@shared/types/discovery'
 import type { AppSettings } from '@shared/types/storage'
 
@@ -16,13 +17,10 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     firstSeen: '2026-03-15T09:00:00.000Z',
     lastSeen: '2026-03-15T09:00:00.000Z',
     visitCount: 5,
-    complianceStatus: {
-      euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
-    },
+    complianceStatus: createMockComplianceStatus(),
     notes: '',
     tags: [],
+    auditTrail: [],
     ...overrides,
   }
 }
@@ -33,8 +31,28 @@ const defaultSettings: AppSettings = {
   responsiblePerson: 'María García',
   installationDate: '2026-03-01T00:00:00.000Z',
   badgeNotifications: true,
+  requireDepartment: false,
+  snapshotFrequencyDays: 0,
+  timezone: 'America/Argentina/Buenos_Aires',
+  dateFormat: 'DD/MM/YYYY',
   customDomains: [],
   excludedDomains: [],
+  regulationConfig: {
+    euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+    iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+    coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+  },
+  auditModeConfig: {
+    auditMode: false,
+    auditModeActivatedAt: null,
+    auditModeActivatedBy: null,
+  },
+  adminProfile: {
+    adminName: '',
+    adminEmail: '',
+    adminRole: 'compliance_officer',
+    department: '',
+  },
 }
 
 describe('generateReport', () => {
@@ -137,5 +155,126 @@ describe('generateReport', () => {
       makeDiscovery({ defaultRiskLevel: 'high', toolName: 'HireVue' }),
     ], defaultSettings)
     expect(html).toContain('badge-high')
+  })
+})
+
+describe('generateContentHash', () => {
+  it('should return a 64-character hex string (SHA-256)', async () => {
+    const hash = await generateContentHash('hello world')
+    expect(hash).toHaveLength(64)
+    expect(hash).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('should return different hashes for different inputs', async () => {
+    const hash1 = await generateContentHash('input-1')
+    const hash2 = await generateContentHash('input-2')
+    expect(hash1).not.toBe(hash2)
+  })
+
+  it('should return same hash for same input (deterministic)', async () => {
+    const hash1 = await generateContentHash('deterministic')
+    const hash2 = await generateContentHash('deterministic')
+    expect(hash1).toBe(hash2)
+  })
+
+  it('should return 64-char hash for empty string', async () => {
+    const hash = await generateContentHash('')
+    expect(hash).toHaveLength(64)
+  })
+})
+
+describe('generateReportWithHash', () => {
+  it('should return plain report without audit badge when audit mode is off', async () => {
+    const html = await generateReportWithHash([makeDiscovery()], defaultSettings)
+    expect(html).toContain('<!DOCTYPE html>')
+    expect(html).not.toContain('MODO AUDITOR')
+    expect(html).not.toContain('SHA-256')
+  })
+
+  it('should include audit badge and hash when audit mode is on', async () => {
+    const auditSettings: AppSettings = {
+      ...defaultSettings,
+      auditModeConfig: {
+        auditMode: true,
+        auditModeActivatedAt: '2026-03-31T18:00:00.000Z',
+        auditModeActivatedBy: 'Compliance Officer',
+      },
+    }
+    const html = await generateReportWithHash([makeDiscovery()], auditSettings)
+    expect(html).toContain('MODO AUDITOR')
+    expect(html).toContain('SHA-256')
+    expect(html).toContain('Compliance Officer')
+    expect(html).toContain('31 de marzo de 2026')
+    const hashMatch = html.match(/[0-9a-f]{64}/)
+    expect(hashMatch).toBeTruthy()
+  })
+
+  it('should not include placeholder div in final output', async () => {
+    const auditSettings: AppSettings = {
+      ...defaultSettings,
+      auditModeConfig: {
+        auditMode: true,
+        auditModeActivatedAt: '2026-03-31T18:00:00.000Z',
+        auditModeActivatedBy: 'Test',
+      },
+    }
+    const html = await generateReportWithHash([makeDiscovery()], auditSettings)
+    expect(html).not.toContain('audit-badge-placeholder')
+  })
+
+  describe('Admin Profile in cover', () => {
+    it('should include admin name, role, email and department in cover when configured', () => {
+      const adminSettings: AppSettings = {
+        ...defaultSettings,
+        adminProfile: {
+          adminName: 'Ana Martínez',
+          adminEmail: 'ana.martinez@empresa.com',
+          adminRole: 'auditor',
+          department: 'Legal',
+        },
+      }
+      const html = generateReport([makeDiscovery()], adminSettings)
+      expect(html).toContain('Ana Martínez')
+      expect(html).toContain('Auditor')
+      expect(html).toContain('ana.martinez@empresa.com')
+      expect(html).toContain('Legal')
+    })
+
+    it('should fall back to responsiblePerson when admin profile is empty', () => {
+      const html = generateReport([makeDiscovery()], defaultSettings)
+      expect(html).toContain('María García')
+      expect(html).toContain('Responsable')
+    })
+
+    it('should include role in parentheses after name', () => {
+      const adminSettings: AppSettings = {
+        ...defaultSettings,
+        adminProfile: {
+          adminName: 'Juan Pérez',
+          adminEmail: 'juan@empresa.com',
+          adminRole: 'compliance_officer',
+          department: 'Compliance',
+        },
+      }
+      const html = generateReport([makeDiscovery()], adminSettings)
+      expect(html).toContain('Juan Pérez (Oficial de Compliance)')
+    })
+
+    it('should omit email when not configured', () => {
+      const adminSettings: AppSettings = {
+        ...defaultSettings,
+        adminProfile: {
+          adminName: 'Solo Nombre',
+          adminEmail: '',
+          adminRole: 'it_admin',
+          department: 'IT',
+        },
+      }
+      const html = generateReport([makeDiscovery()], adminSettings)
+      expect(html).toContain('Solo Nombre')
+      expect(html).toContain('Administrador IT')
+      expect(html).toContain('IT')
+      expect(html).not.toContain('<strong>Email:</strong>')
+    })
   })
 })

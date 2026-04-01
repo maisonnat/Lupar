@@ -13,6 +13,7 @@ export default defineConfig({
       '@background': resolve(__dirname, 'src/background'),
       '@options': resolve(__dirname, 'src/options'),
       '@shared': resolve(__dirname, 'src/shared'),
+      '@test-utils': resolve(__dirname, 'src/test-utils'),
     },
   },
 })

@@ -3,10 +3,23 @@ import type { ComplianceChecklist } from '@shared/types/compliance';
 
 export type DiscoveryStatus = 'detected' | 'confirmed' | 'dismissed' | 'authorized';
 
+export type ArticleChecklistMap = Record<string, ComplianceChecklist>;
+
 export interface ComplianceStatusMap {
-  euAiAct: ComplianceChecklist;
-  iso42001: ComplianceChecklist;
-  coSb205: ComplianceChecklist;
+  euAiAct: ArticleChecklistMap;
+  iso42001: ArticleChecklistMap;
+  coSb205: ArticleChecklistMap;
+}
+
+export type AuditField = 'status' | 'riskLevel' | 'department' | 'notes' | 'compliance';
+
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  field: AuditField;
+  oldValue: string;
+  newValue: string;
+  changedBy: string | null;
 }
 
 export interface DiscoveryRecord {
@@ -24,4 +37,5 @@ export interface DiscoveryRecord {
   complianceStatus: ComplianceStatusMap;
   notes: string;
   tags: string[];
+  auditTrail: AuditEntry[];
 }

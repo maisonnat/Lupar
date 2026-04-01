@@ -1,13 +1,17 @@
 import { useState } from 'react'
 import { useStorage } from '@options/hooks/useStorage'
-import { generateReport, downloadReport } from '@options/utils/report-generator'
+import { generateReport, generateReportWithHash, downloadReport } from '@options/utils/report-generator'
+import { takeSnapshot } from '@options/utils/snapshot-service'
 import { STORAGE_KEYS } from '@shared/types/storage'
 import type { ActivityLogEntry } from '@shared/types/storage'
+import { useDateConfig } from '@options/hooks/useDateConfig'
+import { formatDateTimeLong } from '@shared/utils/date-utils'
 
 export default function Reports() {
   const { discoveries, settings } = useStorage()
   const [generating, setGenerating] = useState(false)
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+  const { timezone } = useDateConfig()
 
   async function handleGenerate() {
     if (!settings) return
@@ -15,10 +19,14 @@ export default function Reports() {
 
     await new Promise((r) => setTimeout(r, 100))
 
-    const html = generateReport(discoveries, settings)
+    const isAuditMode = settings.auditModeConfig?.auditMode ?? false
+    const html = isAuditMode
+      ? await generateReportWithHash(discoveries, settings)
+      : generateReport(discoveries, settings)
     setPreviewHtml(html)
 
     await logActivity(discoveries.length)
+    await takeSnapshot(discoveries, 'report')
 
     setGenerating(false)
   }
@@ -130,7 +138,7 @@ export default function Reports() {
           <div className="border-b border-gray-200 px-4 py-3 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-700">Reporte generado</span>
             <span className="text-xs text-gray-400">
-              {discoveries.length} herramientas · {new Intl.DateTimeFormat('es-AR', { dateStyle: 'long', timeStyle: 'short' }).format(new Date())}
+              {discoveries.length} herramientas · {formatDateTimeLong(new Date().toISOString(), timezone)}
             </span>
           </div>
           <div className="p-4">

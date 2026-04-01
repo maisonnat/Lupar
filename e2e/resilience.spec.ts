@@ -99,9 +99,9 @@ test.describe('Resistencia y Service Worker', () => {
         lastSeen: new Date().toISOString(),
         visitCount: i + 1,
         complianceStatus: {
-          euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-          iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-          coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
+          euAiAct: Object.fromEntries(['art-4','art-6','art-9','art-11','art-12','art-26','art-27','art-50'].map(id => [id, { assessment: 'pending' as const, lastAssessedDate: null, dueDate: null, notes: '' }])),
+          iso42001: Object.fromEntries(['iso-aims-inventory','iso-risk-assessment','iso-documentation','iso-monitoring','iso-governance'].map(id => [id, { assessment: 'pending' as const, lastAssessedDate: null, dueDate: null, notes: '' }])),
+          coSb205: Object.fromEntries(['co-risk-policy','co-impact-assessment','co-disclosure','co-public-statement','co-affirmative-defense'].map(id => [id, { assessment: 'not_applicable' as const, lastAssessedDate: null, dueDate: null, notes: '' }])),
         },
         notes: '',
         tags: [],

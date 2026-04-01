@@ -9,6 +9,7 @@ import {
 } from '@background/discovery-engine'
 import { getDiscoveries, getActivityLog, saveDiscovery } from '@background/storage-service'
 import type { DiscoveryRecord } from '@shared/types/discovery'
+import { createMockComplianceStatus } from '@test-utils/mock-helpers'
 
 function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecord {
   return {
@@ -23,13 +24,10 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     firstSeen: '2026-03-15T09:00:00.000Z',
     lastSeen: '2026-03-15T09:00:00.000Z',
     visitCount: 1,
-    complianceStatus: {
-      euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
-    },
+    complianceStatus: createMockComplianceStatus(),
     notes: '',
     tags: [],
+    auditTrail: [],
     ...overrides,
   }
 }
@@ -191,8 +189,28 @@ describe('discovery-engine', () => {
         responsiblePerson: '',
         installationDate: '2026-03-01T00:00:00.000Z',
         badgeNotifications: true,
+        requireDepartment: false,
+        snapshotFrequencyDays: 0,
+        timezone: 'America/Argentina/Buenos_Aires',
+        dateFormat: 'DD/MM/YYYY',
         customDomains: [],
         excludedDomains: ['chatgpt.com'],
+        regulationConfig: {
+          euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+          iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+          coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+        },
+        auditModeConfig: {
+          auditMode: false,
+          auditModeActivatedAt: null,
+          auditModeActivatedBy: null,
+        },
+        adminProfile: {
+          adminName: '',
+          adminEmail: '',
+          adminRole: 'compliance_officer',
+          department: '',
+        },
       }
 
       await handleNavigation('https://chatgpt.com')
@@ -208,8 +226,28 @@ describe('discovery-engine', () => {
         responsiblePerson: '',
         installationDate: '2026-03-01T00:00:00.000Z',
         badgeNotifications: true,
+        requireDepartment: false,
+        snapshotFrequencyDays: 0,
+        timezone: 'America/Argentina/Buenos_Aires',
+        dateFormat: 'DD/MM/YYYY',
         customDomains: [],
         excludedDomains: ['chatgpt.com'],
+        regulationConfig: {
+          euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+          iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+          coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+        },
+        auditModeConfig: {
+          auditMode: false,
+          auditModeActivatedAt: null,
+          auditModeActivatedBy: null,
+        },
+        adminProfile: {
+          adminName: '',
+          adminEmail: '',
+          adminRole: 'compliance_officer',
+          department: '',
+        },
       }
 
       await handleNavigation('https://claude.ai')
@@ -308,6 +346,10 @@ describe('discovery-engine', () => {
         responsiblePerson: '',
         installationDate: '2026-03-01T00:00:00.000Z',
         badgeNotifications: true,
+        requireDepartment: false,
+        snapshotFrequencyDays: 0,
+        timezone: 'America/Argentina/Buenos_Aires',
+        dateFormat: 'DD/MM/YYYY',
         customDomains: [
           {
             domain: 'internal-ai.mycompany.com',
@@ -317,6 +359,22 @@ describe('discovery-engine', () => {
           },
         ],
         excludedDomains: [],
+        regulationConfig: {
+          euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+          iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+          coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+        },
+        auditModeConfig: {
+          auditMode: false,
+          auditModeActivatedAt: null,
+          auditModeActivatedBy: null,
+        },
+        adminProfile: {
+          adminName: '',
+          adminEmail: '',
+          adminRole: 'compliance_officer',
+          department: '',
+        },
       }
 
       await loadCustomDomains()

@@ -31,10 +31,18 @@ interface ComplianceChecklistInfo {
 
 export interface FullDiscoveryRecord extends DiscoveryInfo {
   complianceStatus: {
-    euAiAct: ComplianceChecklistInfo
-    iso42001: ComplianceChecklistInfo
-    coSb205: ComplianceChecklistInfo
+    euAiAct: Record<string, ComplianceChecklistInfo>
+    iso42001: Record<string, ComplianceChecklistInfo>
+    coSb205: Record<string, ComplianceChecklistInfo>
   }
+  auditTrail: Array<{
+    id: string
+    timestamp: string
+    field: string
+    oldValue: string
+    newValue: string
+    changedBy: string | null
+  }>
 }
 
 type ExtensionFixtures = {
@@ -91,10 +99,31 @@ export async function resetExtension(sw: Worker): Promise<void> {
         responsiblePerson: '',
         installationDate: new Date().toISOString(),
         badgeNotifications: true,
+        requireDepartment: false,
+        snapshotFrequencyDays: 0,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        dateFormat: 'DD/MM/YYYY',
         customDomains: [],
         excludedDomains: [],
+        regulationConfig: {
+          euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+          iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+          coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+        },
+        auditModeConfig: {
+          auditMode: false,
+          auditModeActivatedAt: null,
+          auditModeActivatedBy: null,
+        },
+        adminProfile: {
+          adminName: '',
+          adminEmail: '',
+          adminRole: 'compliance_officer',
+          department: '',
+        },
       },
       activity_log: [],
+      compliance_snapshots: [],
     })
     chrome.action.setBadgeText({ text: '' })
   })
@@ -164,12 +193,13 @@ export async function seedDiscoveries(
     lastSeen: new Date().toISOString(),
     visitCount: i + 1,
     complianceStatus: {
-      euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
+      euAiAct: Object.fromEntries(['art-4','art-6','art-9','art-11','art-12','art-26','art-27','art-50'].map(id => [id, { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' }])),
+      iso42001: Object.fromEntries(['iso-aims-inventory','iso-risk-assessment','iso-documentation','iso-monitoring','iso-governance'].map(id => [id, { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' }])),
+      coSb205: Object.fromEntries(['co-risk-policy','co-impact-assessment','co-disclosure','co-public-statement','co-affirmative-defense'].map(id => [id, { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' }])),
     },
     notes: '',
     tags: [],
+    auditTrail: [],
   }))
 
   await sw.evaluate(async (data: FullDiscoveryRecord[]) => {

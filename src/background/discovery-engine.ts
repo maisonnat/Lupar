@@ -3,10 +3,13 @@ import {
   getDiscoveries,
   createDiscovery,
   updateDiscovery,
+  saveDiscovery,
   getSettings,
   logActivity,
-  initializeDefaults,
+  initializeWithMigration,
 } from '@background/storage-service'
+import { markOverdueAssessments } from '@options/utils/risk-calculator'
+import { checkAndTakeScheduledSnapshot } from '@options/utils/snapshot-service'
 
 const THROTTLE_MS = 5000
 const throttleMap = new Map<string, number>()
@@ -56,7 +59,7 @@ export async function handleNavigation(url: string): Promise<void> {
       )
     }
   } else {
-    await createDiscovery(domain, entry.toolName, entry.category, entry.defaultRiskLevel)
+    await createDiscovery(domain, entry.toolName, entry.category, entry.defaultRiskLevel, settings)
     await logActivity(
       'new_detection',
       domain,
@@ -89,9 +92,32 @@ export async function loadCustomDomains(): Promise<void> {
   }
 }
 
+async function markOverdueOnStartup(): Promise<void> {
+  const [discoveries, settings] = await Promise.all([
+    getDiscoveries(),
+    getSettings(),
+  ])
+
+  const updated = markOverdueAssessments(discoveries, settings)
+  const hasChanges = updated.some((d, i) =>
+    JSON.stringify(d.complianceStatus) !== JSON.stringify(discoveries[i].complianceStatus)
+  )
+
+  if (hasChanges) {
+    await Promise.all(updated.map((d) => saveDiscovery(d)))
+  }
+}
+
 export async function initializeEngine(): Promise<void> {
   resetThrottleMap()
-  await initializeDefaults()
+  await initializeWithMigration()
   await loadCustomDomains()
+  await markOverdueOnStartup()
+  await checkScheduledSnapshot()
   await updateBadge()
+}
+
+async function checkScheduledSnapshot(): Promise<void> {
+  const settings = await getSettings()
+  await checkAndTakeScheduledSnapshot(settings.snapshotFrequencyDays)
 }

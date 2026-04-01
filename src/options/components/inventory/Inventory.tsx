@@ -8,7 +8,7 @@ import InventoryTable from './InventoryTable'
 import ToolDetailModal from './ToolDetailModal'
 
 export default function Inventory() {
-  const { discoveries } = useStorage()
+  const { discoveries, settings } = useStorage()
   const inventory = useInventory(discoveries)
   const [selectedTool, setSelectedTool] = useState<DiscoveryRecord | null>(null)
 
@@ -48,11 +48,12 @@ export default function Inventory() {
         />
       </div>
 
-      {selectedTool && (
+      {selectedTool && settings && (
         <ToolDetailModal
           discovery={selectedTool}
           onSave={handleSave}
           onClose={() => setSelectedTool(null)}
+          settings={settings}
         />
       )}
     </div>

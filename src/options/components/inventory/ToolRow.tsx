@@ -2,6 +2,8 @@ import type { DiscoveryRecord } from '@shared/types/discovery'
 import type { RiskLevel } from '@shared/types/domain'
 import { CATEGORY_LABELS } from '@shared/constants/categories'
 import { RISK_LEVEL_LABELS, RISK_LEVEL_COLORS, DISCOVERY_STATUS_LABELS } from '@shared/constants/risk-levels'
+import { useDateConfig } from '@options/hooks/useDateConfig'
+import { formatDateShort } from '@shared/utils/date-utils'
 
 const statusColors: Record<DiscoveryRecord['status'], string> = {
   detected: 'bg-yellow-100 text-yellow-800',
@@ -17,7 +19,7 @@ const riskBgClasses: Record<RiskLevel, string> = {
   minimal: 'bg-green-100 text-green-800',
 }
 
-function formatRelativeTime(isoString: string): string {
+function formatRelativeTime(isoString: string, timezone: string): string {
   const date = new Date(isoString)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
@@ -29,7 +31,7 @@ function formatRelativeTime(isoString: string): string {
   if (diffMin < 60) return `Hace ${diffMin} min`
   if (diffHours < 24) return `Hace ${diffHours}h`
   if (diffDays < 30) return `Hace ${diffDays}d`
-  return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+  return formatDateShort(isoString, timezone)
 }
 
 interface ToolRowProps {
@@ -39,6 +41,7 @@ interface ToolRowProps {
 
 export default function ToolRow({ discovery, onClick }: ToolRowProps) {
   const effectiveRisk: RiskLevel = discovery.userRiskLevel ?? discovery.defaultRiskLevel
+  const { timezone } = useDateConfig()
 
   return (
     <tr
@@ -74,7 +77,7 @@ export default function ToolRow({ discovery, onClick }: ToolRowProps) {
         {discovery.visitCount}
       </td>
       <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-        {formatRelativeTime(discovery.lastSeen)}
+        {formatRelativeTime(discovery.lastSeen, timezone)}
       </td>
     </tr>
   )

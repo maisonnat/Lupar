@@ -46,11 +46,21 @@ export function useMetrics(
     const regulationKeys: RegulationType[] = ['euAiAct', 'iso42001', 'coSb205']
     const complianceSummary = Object.fromEntries(
       regulationKeys.map((key) => {
-        const entries = discoveries.map((d) => d.complianceStatus[key])
-        const total = entries.length
-        const complete = entries.filter((e) => e.assessment === 'complete').length
-        const pending = entries.filter((e) => e.assessment === 'pending').length
-        const overdue = entries.filter((e) => e.assessment === 'overdue').length
+        let complete = 0
+        let pending = 0
+        let overdue = 0
+        let total = 0
+
+        for (const d of discoveries) {
+          const articleMap = d.complianceStatus[key]
+          for (const checklist of Object.values(articleMap)) {
+            total++
+            if (checklist.assessment === 'complete') complete++
+            else if (checklist.assessment === 'pending') pending++
+            else if (checklist.assessment === 'overdue') overdue++
+          }
+        }
+
         return [key, { complete, pending, overdue, total }]
       }),
     ) as Record<RegulationType, { complete: number; pending: number; overdue: number; total: number }>

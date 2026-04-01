@@ -4,16 +4,19 @@ import {
   getRiskLevelColor,
   countByRiskLevel,
   countByStatus,
+  getUpcomingDeadlines,
 } from '@options/utils/risk-calculator'
 import type { DiscoveryRecord } from '@shared/types/discovery'
+import type { AppSettings } from '@shared/types/storage'
+import { createMockComplianceStatus } from '@test-utils/mock-helpers'
 
 function makeDiscovery(
-  overrides: Partial<Pick<DiscoveryRecord, 'defaultRiskLevel' | 'userRiskLevel' | 'status'>> = {},
+  overrides: Partial<Pick<DiscoveryRecord, 'defaultRiskLevel' | 'userRiskLevel' | 'status' | 'complianceStatus' | 'toolName' | 'id'>> = {},
 ): DiscoveryRecord {
   return {
-    id: 'test-id',
+    id: overrides.id ?? 'test-id',
     domain: 'test.com',
-    toolName: 'Test Tool',
+    toolName: overrides.toolName ?? 'Test Tool',
     category: 'chatbot',
     defaultRiskLevel: overrides.defaultRiskLevel ?? 'limited',
     userRiskLevel: overrides.userRiskLevel ?? null,
@@ -22,14 +25,49 @@ function makeDiscovery(
     firstSeen: '2026-03-15T09:00:00.000Z',
     lastSeen: '2026-03-15T09:00:00.000Z',
     visitCount: 1,
-    complianceStatus: {
-      euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
-    },
+    complianceStatus: overrides.complianceStatus ?? createMockComplianceStatus(),
     notes: '',
     tags: [],
+    auditTrail: [],
   }
+}
+
+function makeDefaultSettings(): AppSettings {
+  return {
+    version: '1.0.0',
+    companyName: '',
+    responsiblePerson: '',
+    installationDate: '',
+    badgeNotifications: true,
+    requireDepartment: false,
+    snapshotFrequencyDays: 0,
+    timezone: 'America/Argentina/Buenos_Aires',
+    dateFormat: 'DD/MM/YYYY',
+    customDomains: [],
+    excludedDomains: [],
+    regulationConfig: {
+      euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+      iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+      coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+    },
+    auditModeConfig: {
+      auditMode: false,
+      auditModeActivatedAt: null,
+      auditModeActivatedBy: null,
+    },
+    adminProfile: {
+      adminName: '',
+      adminEmail: '',
+      adminRole: 'compliance_officer',
+      department: '',
+    },
+  }
+}
+
+function daysFromNow(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return d.toISOString()
 }
 
 describe('risk-calculator', () => {
@@ -178,6 +216,264 @@ describe('risk-calculator', () => {
       expect(counts.confirmed).toBe(1)
       expect(counts.authorized).toBe(1)
       expect(counts.dismissed).toBe(0)
+    })
+  })
+
+  describe('getUpcomingDeadlines', () => {
+    const settings = makeDefaultSettings()
+
+    it('should return empty array for empty discoveries', () => {
+      const result = getUpcomingDeadlines([], settings)
+      expect(result).toEqual([])
+    })
+
+    it('should skip dismissed tools', () => {
+      const discoveries = [
+        makeDiscovery({
+          status: 'dismissed',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(5), notes: '' },
+            },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+      expect(result).toEqual([])
+    })
+
+    it('should skip complete and not_applicable checklists', () => {
+      const discoveries = [
+        makeDiscovery({
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'complete', lastAssessedDate: '2026-03-01T00:00:00.000Z', dueDate: daysFromNow(5), notes: '' },
+            },
+          }),
+        }),
+        makeDiscovery({
+          id: 'test-2',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'not_applicable', lastAssessedDate: null, dueDate: daysFromNow(5), notes: '' },
+            },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+      expect(result).toEqual([])
+    })
+
+    it('should skip disabled regulations', () => {
+      const discoveries = [
+        makeDiscovery({
+          complianceStatus: createMockComplianceStatus({
+            coSb205: {
+              'co-risk-policy': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(10), notes: '' },
+            },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+      expect(result).toEqual([])
+    })
+
+    it('should skip checklists without dueDate', () => {
+      const discoveries = [
+        makeDiscovery({
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
+            },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+      expect(result).toEqual([])
+    })
+
+    it('should return pending deadlines with correct fields', () => {
+      const dueDate = daysFromNow(5)
+      const discoveries = [
+        makeDiscovery({
+          id: 'chat-1',
+          toolName: 'ChatGPT',
+          defaultRiskLevel: 'limited',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate, notes: '' },
+            },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toEqual({
+        toolName: 'ChatGPT',
+        toolId: 'chat-1',
+        regulationKey: 'euAiAct',
+        regulationLabel: 'EU AI Act',
+        articleId: 'art-4',
+        articleTitle: 'Art. 4 — Alfabetización en IA',
+        dueDate,
+        daysRemaining: expect.closeTo(5, 0),
+        riskLevel: 'limited',
+        urgency: 'this_week',
+      })
+    })
+
+    it('should classify overdue as negative daysRemaining', () => {
+      const discoveries = [
+        makeDiscovery({
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(-3), notes: '' },
+            },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].urgency).toBe('overdue')
+      expect(result[0].daysRemaining).toBeLessThan(0)
+    })
+
+    it('should classify urgency correctly: overdue, this_week, this_month, upcoming', () => {
+      const discoveries = [
+        makeDiscovery({
+          id: 'd1',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: { 'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(-2), notes: '' } },
+          }),
+        }),
+        makeDiscovery({
+          id: 'd2',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: { 'art-6': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(3), notes: '' } },
+          }),
+        }),
+        makeDiscovery({
+          id: 'd3',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: { 'art-9': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(15), notes: '' } },
+          }),
+        }),
+        makeDiscovery({
+          id: 'd4',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: { 'art-11': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(60), notes: '' } },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+
+      expect(result).toHaveLength(4)
+      expect(result[0].urgency).toBe('overdue')
+      expect(result[1].urgency).toBe('this_week')
+      expect(result[2].urgency).toBe('this_month')
+      expect(result[3].urgency).toBe('upcoming')
+    })
+
+    it('should sort by daysRemaining ascending', () => {
+      const discoveries = [
+        makeDiscovery({
+          id: 'd1',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: { 'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(20), notes: '' } },
+          }),
+        }),
+        makeDiscovery({
+          id: 'd2',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: { 'art-6': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(3), notes: '' } },
+          }),
+        }),
+        makeDiscovery({
+          id: 'd3',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: { 'art-9': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(10), notes: '' } },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+
+      expect(result[0].daysRemaining).toBeLessThanOrEqual(result[1].daysRemaining)
+      expect(result[1].daysRemaining).toBeLessThanOrEqual(result[2].daysRemaining)
+    })
+
+    it('should respect daysAhead parameter', () => {
+      const discoveries = [
+        makeDiscovery({
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(5), notes: '' },
+            },
+          }),
+        }),
+        makeDiscovery({
+          id: 'd2',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-6': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(120), notes: '' },
+            },
+          }),
+        }),
+      ]
+      const resultDefault = getUpcomingDeadlines(discoveries, settings)
+      expect(resultDefault).toHaveLength(1)
+
+      const resultWide = getUpcomingDeadlines(discoveries, settings, 150)
+      expect(resultWide).toHaveLength(2)
+    })
+
+    it('should use userRiskLevel over defaultRiskLevel', () => {
+      const discoveries = [
+        makeDiscovery({
+          defaultRiskLevel: 'limited',
+          userRiskLevel: 'high',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(5), notes: '' },
+            },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+      expect(result[0].riskLevel).toBe('high')
+    })
+
+    it('should include overdue articles', () => {
+      const discoveries = [
+        makeDiscovery({
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'overdue', lastAssessedDate: null, dueDate: daysFromNow(-5), notes: '' },
+            },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+      expect(result).toHaveLength(1)
+      expect(result[0].urgency).toBe('overdue')
+    })
+
+    it('should generate one deadline per article per regulation', () => {
+      const discoveries = [
+        makeDiscovery({
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(10), notes: '' },
+              'art-6': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(10), notes: '' },
+            },
+          }),
+        }),
+      ]
+      const result = getUpcomingDeadlines(discoveries, settings)
+      expect(result).toHaveLength(2)
+      expect(result[0].articleId).toBe('art-4')
+      expect(result[1].articleId).toBe('art-6')
     })
   })
 })

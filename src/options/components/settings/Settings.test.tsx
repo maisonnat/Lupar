@@ -11,8 +11,28 @@ const defaultSettings = {
   responsiblePerson: '',
   installationDate: '2026-01-01T00:00:00.000Z',
   badgeNotifications: true,
+  requireDepartment: false,
+  snapshotFrequencyDays: 0,
+  timezone: 'America/Argentina/Buenos_Aires',
+  dateFormat: 'DD/MM/YYYY',
   customDomains: [] as CustomDomainEntry[],
   excludedDomains: [] as string[],
+  regulationConfig: {
+    euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+    iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+    coSb205: { enabled: true, customDueDateOffsetDays: 90 },
+  },
+  auditModeConfig: {
+    auditMode: false,
+    auditModeActivatedAt: null,
+    auditModeActivatedBy: null,
+  },
+  adminProfile: {
+    adminName: '',
+    adminEmail: '',
+    adminRole: 'compliance_officer',
+    department: '',
+  },
 }
 
 async function renderSettings() {
@@ -102,7 +122,8 @@ describe('Settings', () => {
 
     await renderSettings()
 
-    const toggle = screen.getByRole('switch')
+    const toggles = screen.getAllByRole('switch')
+    const toggle = toggles[0]
     expect(toggle).toHaveAttribute('aria-checked', 'true')
 
     fireEvent.click(toggle)
@@ -511,5 +532,554 @@ describe('Settings', () => {
     expect(
       screen.getByText('No hay dominios excluidos configurados'),
     ).toBeInTheDocument()
+  })
+
+  describe('Audit Mode', () => {
+    it('should show audit mode toggle', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      expect(screen.getByTestId('audit-mode-toggle')).toBeInTheDocument()
+      expect(screen.getByText('Activar modo auditor')).toBeInTheDocument()
+    })
+
+    it('should show confirmation modal when activating audit mode', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const toggles = screen.getAllByRole('switch')
+      fireEvent.click(toggles[2])
+
+      await waitFor(() => {
+        expect(screen.getByTestId('activate-audit-mode-btn')).toBeInTheDocument()
+      })
+      expect(screen.getByTestId('activate-audit-mode-btn')).toBeInTheDocument()
+    })
+
+    it('should activate audit mode and persist', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        responsiblePerson: 'Carlos',
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const toggles = screen.getAllByRole('switch')
+      fireEvent.click(toggles[2])
+
+      await waitFor(() => {
+        expect(screen.getByTestId('activate-audit-mode-btn')).toBeInTheDocument()
+      })
+      fireEvent.click(screen.getByTestId('activate-audit-mode-btn'))
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.auditModeConfig.auditMode).toBe(true)
+        expect(stored.auditModeConfig.auditModeActivatedBy).toBe('Carlos')
+        expect(stored.auditModeConfig.auditModeActivatedAt).not.toBeNull()
+      })
+    })
+
+    it('should disable Import and Clear buttons when audit mode is active', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        auditModeConfig: {
+          auditMode: true,
+          auditModeActivatedAt: '2026-03-31T18:00:00.000Z',
+          auditModeActivatedBy: 'Auditor',
+        },
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      expect(screen.getByText('Importar Backup')).toBeDisabled()
+      expect(screen.getByText('Limpiar Todo')).toBeDisabled()
+    })
+
+    it('should keep Export button enabled when audit mode is active', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        auditModeConfig: {
+          auditMode: true,
+          auditModeActivatedAt: '2026-03-31T18:00:00.000Z',
+          auditModeActivatedBy: 'Auditor',
+        },
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      expect(screen.getByText('Exportar Backup')).not.toBeDisabled()
+    })
+
+    it('should deactivate audit mode directly (no confirmation needed)', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        auditModeConfig: {
+          auditMode: true,
+          auditModeActivatedAt: '2026-03-31T18:00:00.000Z',
+          auditModeActivatedBy: 'Auditor',
+        },
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const toggles = screen.getAllByRole('switch')
+      fireEvent.click(toggles[2])
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.auditModeConfig.auditMode).toBe(false)
+        expect(stored.auditModeConfig.auditModeActivatedAt).toBeNull()
+      })
+    })
+  })
+
+  describe('Admin Profile', () => {
+    it('should render admin profile section', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      expect(screen.getByText('Perfil del Administrador')).toBeInTheDocument()
+      expect(screen.getByTestId('admin-name-input')).toBeInTheDocument()
+      expect(screen.getByTestId('admin-email-input')).toBeInTheDocument()
+      expect(screen.getByTestId('admin-role-select')).toBeInTheDocument()
+      expect(screen.getByTestId('admin-department-input')).toBeInTheDocument()
+    })
+
+    it('should load admin profile from storage', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        adminProfile: {
+          adminName: 'María López',
+          adminEmail: 'maria@empresa.com',
+          adminRole: 'auditor',
+          department: 'Legal',
+        },
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      await waitFor(() => {
+        expect(screen.getByTestId('admin-name-input')).toHaveValue('María López')
+      })
+      expect(screen.getByTestId('admin-email-input')).toHaveValue('maria@empresa.com')
+      expect(screen.getByTestId('admin-role-select')).toHaveValue('auditor')
+      expect(screen.getByTestId('admin-department-input')).toHaveValue('Legal')
+    })
+
+    it('should save admin name on blur', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const nameInput = screen.getByTestId('admin-name-input')
+      fireEvent.change(nameInput, { target: { value: 'Carlos García' } })
+      fireEvent.blur(nameInput)
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.adminProfile.adminName).toBe('Carlos García')
+      })
+    })
+
+    it('should save admin email on blur', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const emailInput = screen.getByTestId('admin-email-input')
+      fireEvent.change(emailInput, { target: { value: 'carlos@empresa.com' } })
+      fireEvent.blur(emailInput)
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.adminProfile.adminEmail).toBe('carlos@empresa.com')
+      })
+    })
+
+    it('should save admin department on blur', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const deptInput = screen.getByTestId('admin-department-input')
+      fireEvent.change(deptInput, { target: { value: 'Compliance' } })
+      fireEvent.blur(deptInput)
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.adminProfile.department).toBe('Compliance')
+      })
+    })
+
+    it('should save admin role on change', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const roleSelect = screen.getByTestId('admin-role-select')
+      fireEvent.change(roleSelect, { target: { value: 'auditor' } })
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.adminProfile.adminRole).toBe('auditor')
+      })
+    })
+
+    it('should show all 4 role options', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const roleSelect = screen.getByTestId('admin-role-select') as HTMLSelectElement
+      expect(roleSelect.options).toHaveLength(4)
+      expect(roleSelect.options[0].value).toBe('compliance_officer')
+      expect(roleSelect.options[1].value).toBe('it_admin')
+      expect(roleSelect.options[2].value).toBe('auditor')
+      expect(roleSelect.options[3].value).toBe('executive')
+    })
+
+    it('should use adminName for audit mode activation', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        adminProfile: {
+          adminName: 'Auditor Test',
+          adminEmail: 'auditor@empresa.com',
+          adminRole: 'auditor',
+          department: 'Legal',
+        },
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const toggles = screen.getAllByRole('switch')
+      fireEvent.click(toggles[2])
+
+      await waitFor(() => {
+        expect(screen.getByTestId('activate-audit-mode-btn')).toBeInTheDocument()
+      })
+      fireEvent.click(screen.getByTestId('activate-audit-mode-btn'))
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.auditModeConfig.auditModeActivatedBy).toBe('Auditor Test')
+      })
+    })
+
+    it('should reset admin profile on clear all', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        adminProfile: {
+          adminName: 'Delete Me',
+          adminEmail: 'delete@empresa.com',
+          adminRole: 'auditor',
+          department: 'Legal',
+        },
+      }
+      mockStore['ai_discoveries'] = [{ id: 'disc-1' }]
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      fireEvent.click(screen.getByText('Limpiar Todo'))
+      fireEvent.click(screen.getByText('Sí, eliminar todo'))
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.adminProfile.adminName).toBe('')
+        expect(stored.adminProfile.adminEmail).toBe('')
+        expect(stored.adminProfile.adminRole).toBe('compliance_officer')
+        expect(stored.adminProfile.department).toBe('')
+      })
+    })
+  })
+
+  describe('Require Department', () => {
+    it('should show require department toggle in organization section', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      expect(screen.getByTestId('require-department-toggle')).toBeInTheDocument()
+      expect(screen.getByText('Exigir departamento al guardar herramientas')).toBeInTheDocument()
+    })
+
+    it('should load requireDepartment from storage', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        requireDepartment: true,
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const toggle = screen.getByTestId('require-department-toggle')
+      await waitFor(() => {
+        expect(toggle).toHaveAttribute('aria-checked', 'true')
+      })
+    })
+
+    it('should toggle requireDepartment and persist', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        requireDepartment: false,
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const toggle = screen.getByTestId('require-department-toggle')
+      expect(toggle).toHaveAttribute('aria-checked', 'false')
+
+      fireEvent.click(toggle)
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.requireDepartment).toBe(true)
+      })
+    })
+
+    it('should reset requireDepartment on clear all', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        requireDepartment: true,
+      }
+      mockStore['ai_discoveries'] = [{ id: 'disc-1' }]
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      fireEvent.click(screen.getByText('Limpiar Todo'))
+      fireEvent.click(screen.getByText('Sí, eliminar todo'))
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.requireDepartment).toBe(false)
+      })
+    })
+  })
+
+  describe('snapshotFrequencyDays', () => {
+    it('should render snapshot frequency input', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      expect(screen.getByText('Snapshots de Cumplimiento')).toBeInTheDocument()
+      expect(screen.getByTestId('snapshot-frequency-input')).toBeInTheDocument()
+    })
+
+    it('should load snapshotFrequencyDays from storage', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        snapshotFrequencyDays: 30,
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const input = screen.getByTestId('snapshot-frequency-input') as HTMLInputElement
+      await waitFor(() => {
+        expect(input.value).toBe('30')
+      })
+    })
+
+    it('should persist snapshotFrequencyDays on change', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const input = screen.getByTestId('snapshot-frequency-input')
+      fireEvent.change(input, { target: { value: '14' } })
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.snapshotFrequencyDays).toBe(14)
+      })
+    })
+
+    it('should reset snapshotFrequencyDays on clear all', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        snapshotFrequencyDays: 30,
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      fireEvent.click(screen.getByText('Limpiar Todo'))
+      fireEvent.click(screen.getByText('Sí, eliminar todo'))
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.snapshotFrequencyDays).toBe(0)
+      })
+    })
+  })
+
+  describe('Timezone and Date Format', () => {
+    it('should render date/time format section with selects', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      expect(screen.getByText('Formato de Fecha y Hora')).toBeInTheDocument()
+      expect(screen.getByTestId('timezone-select')).toBeInTheDocument()
+      expect(screen.getByTestId('date-format-select')).toBeInTheDocument()
+    })
+
+    it('should show all 21 timezone options', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const select = screen.getByTestId('timezone-select') as HTMLSelectElement
+      expect(select.options).toHaveLength(21)
+      expect(select.options[0].value).toBe('America/Argentina/Buenos_Aires')
+      expect(select.options[20].value).toBe('UTC')
+    })
+
+    it('should load timezone from storage', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        timezone: 'America/Mexico_City',
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const select = screen.getByTestId('timezone-select') as HTMLSelectElement
+      await waitFor(() => {
+        expect(select.value).toBe('America/Mexico_City')
+      })
+    })
+
+    it('should persist timezone on change', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const select = screen.getByTestId('timezone-select')
+      fireEvent.change(select, { target: { value: 'Europe/Madrid' } })
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.timezone).toBe('Europe/Madrid')
+      })
+    })
+
+    it('should show all 3 date format options', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const select = screen.getByTestId('date-format-select') as HTMLSelectElement
+      expect(select.options).toHaveLength(3)
+      expect(select.options[0].value).toBe('DD/MM/YYYY')
+      expect(select.options[1].value).toBe('MM/DD/YYYY')
+      expect(select.options[2].value).toBe('YYYY-MM-DD')
+    })
+
+    it('should load date format from storage', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        dateFormat: 'YYYY-MM-DD',
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const select = screen.getByTestId('date-format-select') as HTMLSelectElement
+      await waitFor(() => {
+        expect(select.value).toBe('YYYY-MM-DD')
+      })
+    })
+
+    it('should persist date format on change', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const select = screen.getByTestId('date-format-select')
+      fireEvent.change(select, { target: { value: 'MM/DD/YYYY' } })
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.dateFormat).toBe('MM/DD/YYYY')
+      })
+    })
+
+    it('should reset timezone and dateFormat on clear all', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        timezone: 'America/New_York',
+        dateFormat: 'YYYY-MM-DD',
+      }
+      mockStore['ai_discoveries'] = [{ id: 'disc-1' }]
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      fireEvent.click(screen.getByText('Limpiar Todo'))
+      fireEvent.click(screen.getByText('Sí, eliminar todo'))
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.dateFormat).toBe('DD/MM/YYYY')
+      })
+    })
   })
 })

@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import Dashboard from '@options/components/dashboard/Dashboard'
 import { mockStore } from '../../../../vitest.setup'
 import type { DiscoveryRecord } from '@shared/types/discovery'
+import { createMockComplianceStatus } from '@test-utils/mock-helpers'
 
 function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecord {
   return {
@@ -18,13 +19,10 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     firstSeen: '2026-03-15T09:00:00.000Z',
     lastSeen: '2026-03-15T09:00:00.000Z',
     visitCount: 5,
-    complianceStatus: {
-      euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
-    },
+    complianceStatus: createMockComplianceStatus(),
     notes: '',
     tags: [],
+    auditTrail: [],
     ...overrides,
   }
 }
@@ -35,9 +33,29 @@ const defaultSettings = {
   responsiblePerson: '',
   installationDate: '',
   badgeNotifications: true,
-  customDomains: [],
-  excludedDomains: [],
-}
+    requireDepartment: false,
+    snapshotFrequencyDays: 0,
+    timezone: 'America/Argentina/Buenos_Aires',
+    dateFormat: 'DD/MM/YYYY',
+    customDomains: [],
+    excludedDomains: [],
+    regulationConfig: {
+      euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+      iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+      coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+    },
+    auditModeConfig: {
+      auditMode: false,
+      auditModeActivatedAt: null,
+      auditModeActivatedBy: null,
+    },
+    adminProfile: {
+      adminName: '',
+      adminEmail: '',
+      adminRole: 'compliance_officer',
+      department: '',
+    },
+  }
 
 async function renderAndWait(ui: React.ReactElement) {
   render(ui)
@@ -53,6 +71,7 @@ describe('Dashboard', () => {
     mockStore['ai_discoveries'] = []
     mockStore['app_settings'] = defaultSettings
     mockStore['activity_log'] = []
+    mockStore['compliance_snapshots'] = []
 
     await renderAndWait(<Dashboard />)
 
@@ -69,6 +88,7 @@ describe('Dashboard', () => {
     ]
     mockStore['app_settings'] = defaultSettings
     mockStore['activity_log'] = []
+    mockStore['compliance_snapshots'] = []
 
     await renderAndWait(<Dashboard />)
 
@@ -83,6 +103,7 @@ describe('Dashboard', () => {
     mockStore['ai_discoveries'] = []
     mockStore['app_settings'] = defaultSettings
     mockStore['activity_log'] = []
+    mockStore['compliance_snapshots'] = []
 
     await renderAndWait(<Dashboard />)
 
@@ -98,6 +119,7 @@ describe('Dashboard', () => {
       { id: 'log-1', timestamp: new Date().toISOString(), eventType: 'new_detection', domain: 'chatgpt.com', details: 'Nueva herramienta: ChatGPT' },
       { id: 'log-2', timestamp: new Date().toISOString(), eventType: 'status_changed', domain: 'claude.ai', details: 'Estado actualizado: Claude' },
     ]
+    mockStore['compliance_snapshots'] = []
 
     await renderAndWait(<Dashboard />)
 
@@ -111,6 +133,7 @@ describe('Dashboard', () => {
     mockStore['ai_discoveries'] = []
     mockStore['app_settings'] = defaultSettings
     mockStore['activity_log'] = []
+    mockStore['compliance_snapshots'] = []
 
     await renderAndWait(<Dashboard />)
 

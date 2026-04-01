@@ -1,4 +1,4 @@
-import type { RegulationType } from '@shared/types/compliance';
+import type { RegulationType, ComplianceChecklist } from '@shared/types/compliance';
 
 export interface RegulationArticle {
   id: string;
@@ -151,3 +151,21 @@ export const REGULATIONS: Record<RegulationType, RegulationInfo> = {
     ],
   },
 };
+
+export function createArticleChecklistMap(
+  regKey: RegulationType,
+  enabled: boolean,
+  dueDate: string | null,
+): Record<string, ComplianceChecklist> {
+  const articles = REGULATIONS[regKey].articles;
+  const result: Record<string, ComplianceChecklist> = {};
+  for (const article of articles) {
+    result[article.id] = {
+      assessment: enabled ? 'pending' : 'not_applicable',
+      lastAssessedDate: null,
+      dueDate: enabled ? dueDate : null,
+      notes: '',
+    };
+  }
+  return result;
+}

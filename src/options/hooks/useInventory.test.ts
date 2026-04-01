@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useInventory } from '@options/hooks/useInventory'
 import type { DiscoveryRecord } from '@shared/types/discovery'
+import { createMockComplianceStatus } from '@test-utils/mock-helpers'
 
 function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecord {
   return {
@@ -17,13 +18,10 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     firstSeen: '2026-03-15T09:00:00.000Z',
     lastSeen: '2026-03-15T09:00:00.000Z',
     visitCount: 5,
-    complianceStatus: {
-      euAiAct: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      iso42001: { assessment: 'pending', lastAssessedDate: null, dueDate: null, notes: '' },
-      coSb205: { assessment: 'not_applicable', lastAssessedDate: null, dueDate: null, notes: '' },
-    },
+    complianceStatus: createMockComplianceStatus(),
     notes: '',
     tags: [],
+    auditTrail: [],
     ...overrides,
   }
 }
