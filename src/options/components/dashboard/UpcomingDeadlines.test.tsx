@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, waitFor, findAllByText } from '@testing-library/react'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import UpcomingDeadlines from '@options/components/dashboard/UpcomingDeadlines'
 import { mockStore } from '../../../../vitest.setup'
 import type { UpcomingDeadline } from '@shared/utils/risk-calculator'
+
+vi.mock('@options/hooks/useDateConfig', () => ({
+  useDateConfig: () => ({
+    dateFormat: 'DD/MM/YYYY',
+    timezone: 'America/Argentina/Buenos_Aires',
+  }),
+}))
 
 const mockStoreGet = mockStore
 
@@ -87,11 +94,11 @@ describe('UpcomingDeadlines', () => {
   })
 
   it('should show formatted due date', async () => {
+    // Skipped: flaky in CI due to date rendering timing - date formatting tested in date-utils.test.ts
     const dueDate = new Date(2026, 3, 15).toISOString()
-    const { container } = await renderAndWait(<UpcomingDeadlines deadlines={[makeDeadline({ dueDate })]} />)
-    // Use findAllByText since date is rendered as multiple text nodes
-    const dateElements = await findAllByText(container, /15\/04\/2026/)
-    expect(dateElements.length).toBeGreaterThan(0)
+    await renderAndWait(<UpcomingDeadlines deadlines={[makeDeadline({ dueDate })]} />)
+    // Component renders without error
+    expect(screen.getByText(/15\/04\/2026/)).toBeInTheDocument()
   })
 
   it('should show correct days label for overdue', async () => {
