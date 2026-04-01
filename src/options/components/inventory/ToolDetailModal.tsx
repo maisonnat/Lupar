@@ -6,12 +6,12 @@ import type { AppSettings } from '@shared/types/storage'
 import type { RegulationType, AssessmentStatus, ComplianceChecklist } from '@shared/types/compliance'
 import { CATEGORY_LABELS } from '@shared/constants/categories'
 import { RISK_LEVEL_LABELS, DISCOVERY_STATUS_LABELS } from '@shared/constants/risk-levels'
-import { calculateDueDate } from '@options/utils/risk-calculator'
+import { calculateDueDate } from '@shared/utils/risk-calculator'
 import { REGULATIONS } from '@shared/constants/regulations'
 import { createAuditEntries, appendAuditEntries, AUDIT_FIELD_LABELS } from '@options/utils/audit-trail'
 import { useAuditTrail } from '@options/hooks/useAuditTrail'
+import { useDateConfig } from '@options/hooks/useDateConfig'
 import { formatDate, formatDateTime } from '@shared/utils/date-utils'
-import { detectTimezone } from '@shared/utils/date-utils'
 
 const DEPARTMENTS = [
   'Ventas',
@@ -27,7 +27,7 @@ const DEPARTMENTS = [
 const riskOptions: RiskLevel[] = ['prohibited', 'high', 'limited', 'minimal']
 const statusOptions: DiscoveryStatus[] = ['detected', 'confirmed', 'dismissed', 'authorized']
 
-type ModalTab = 'info' | 'compliance' | 'notes' | 'history'
+type ModalTab = 'info' | 'compliance' | 'notes' | 'history' | 'timeline'
 
 interface ToolDetailModalProps {
   discovery: DiscoveryRecord
@@ -55,7 +55,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 function formatTimestamp(iso: string): string {
-  return formatDateTime(iso, 'DD/MM/YYYY', detectTimezone())
+  return formatDateTime(iso, 'DD/MM/YYYY', 'America/Argentina/Buenos_Aires')
 }
 
 export default function ToolDetailModal({ discovery, onSave, onClose, settings }: ToolDetailModalProps) {
@@ -72,8 +72,7 @@ export default function ToolDetailModal({ discovery, onSave, onClose, settings }
 
   const isAuditMode = settings.auditModeConfig?.auditMode ?? false
   const disabledClass = isAuditMode ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
-  const tz = settings.timezone ?? detectTimezone()
-  const df = settings.dateFormat ?? 'DD/MM/YYYY'
+  const { timezone: tz, dateFormat: df } = useDateConfig()
 
   const { entries: auditEntries, hasEntries } = useAuditTrail(discovery.auditTrail)
 
@@ -156,6 +155,7 @@ export default function ToolDetailModal({ discovery, onSave, onClose, settings }
     { key: 'compliance', label: 'Compliance' },
     { key: 'notes', label: 'Notas' },
     { key: 'history', label: 'Historial' },
+    { key: 'timeline', label: 'Timeline' },
   ]
 
   return (
@@ -406,6 +406,61 @@ export default function ToolDetailModal({ discovery, onSave, onClose, settings }
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'timeline' && (
+            <div>
+              {!discovery.detectionEvents || discovery.detectionEvents.length === 0 ? (
+                <div className="text-center py-8 text-gray-400" data-testid="timeline-empty">
+                  <svg className="mx-auto mb-3 text-gray-300" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 8v4l3 3" />
+                    <circle cx="12" cy="12" r="10" />
+                  </svg>
+                  <p className="text-sm">No hay eventos de detección</p>
+                  <p className="text-xs mt-1">Las visitas a esta herramienta aparecerán aquí.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {[...discovery.detectionEvents].reverse().map((event) => {
+                    const typeLabels: Record<string, string> = {
+                      first_seen: 'Primera detección',
+                      visit: 'Visita',
+                      status_change: 'Cambio de estado',
+                      risk_change: 'Cambio de riesgo',
+                    }
+                    const typeColors: Record<string, string> = {
+                      first_seen: 'bg-green-100 text-green-800',
+                      visit: 'bg-blue-100 text-blue-800',
+                      status_change: 'bg-purple-100 text-purple-800',
+                      risk_change: 'bg-orange-100 text-orange-800',
+                    }
+                    return (
+                      <div
+                        key={event.id}
+                        className="border border-gray-100 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColors[event.type]}`}>
+                                {typeLabels[event.type]}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                #{event.visitCount}
+                              </span>
+                            </div>
+                            <div className="text-sm text-gray-900">{event.details}</div>
+                          </div>
+                          <div className="text-xs text-gray-400 whitespace-nowrap mt-0.5">
+                            {formatTimestamp(event.timestamp)}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>

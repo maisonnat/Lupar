@@ -7,10 +7,12 @@ import {
   getUpcomingDeadlines,
   evaluateBadgeState,
   buildHeatmapData,
-} from '@options/utils/risk-calculator'
+  calculateMaturityMetrics,
+  calculateMaturityTrend,
+} from '@shared/utils/risk-calculator'
 import type { DiscoveryRecord } from '@shared/types/discovery'
 import type { AppSettings } from '@shared/types/storage'
-import { createMockComplianceStatus } from '@test-utils/mock-helpers'
+import { createMockComplianceStatus, createMockDetectionEvent } from '@test-utils/mock-helpers'
 
 function makeDiscovery(
   overrides: Partial<Pick<DiscoveryRecord, 'defaultRiskLevel' | 'userRiskLevel' | 'status' | 'complianceStatus' | 'toolName' | 'id' | 'department'>> = {},
@@ -31,6 +33,7 @@ function makeDiscovery(
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [createMockDetectionEvent()],
   }
 }
 
@@ -67,6 +70,20 @@ function makeDefaultSettings(): AppSettings {
       adminEmail: '',
       adminRole: 'compliance_officer',
       department: '',
+    },
+    retentionPolicy: {
+      discoveryRetentionDays: 365,
+      snapshotRetentionDays: 730,
+      activityLogRetentionDays: 180,
+    },
+    detectionThrottleMs: 5000,
+    exportConfig: {
+      defaultFormat: 'html',
+      includeInventory: true,
+      includeComplianceMap: true,
+      includeRecommendations: true,
+      includeAuditTrail: true,
+      defaultDateRangeDays: 0,
     },
   }
 }
@@ -857,6 +874,117 @@ describe('risk-calculator', () => {
       ]
       const result = buildHeatmapData(discoveries)
       expect(result.totalTools).toBe(3)
+    })
+  })
+
+  describe('calculateMaturityMetrics', () => {
+    it('should return zero metrics for empty discoveries', () => {
+      const result = calculateMaturityMetrics([], [])
+      expect(result.coveragePercent).toBe(0)
+      expect(result.totalArticles).toBe(0)
+      expect(result.trend).toBe('unknown')
+    })
+
+    it('should calculate coverage from compliance status', () => {
+      const discovery = makeDiscovery({
+        complianceStatus: {
+          euAiAct: {
+            'art-4': { assessment: 'complete', lastAssessedDate: '2026-03-01', dueDate: null, notes: '' },
+            'art-6': { assessment: 'pending', lastAssessedDate: null, dueDate: '2026-06-01', notes: '' },
+          },
+          iso42001: {},
+          coSb205: {},
+        },
+      })
+      const result = calculateMaturityMetrics([discovery], [])
+      expect(result.totalArticles).toBeGreaterThanOrEqual(2)
+      expect(result.assessedArticles).toBeGreaterThanOrEqual(1)
+      expect(result.pendingArticles).toBeGreaterThanOrEqual(1)
+    })
+
+    it('should count overdue articles', () => {
+      const discovery = makeDiscovery({
+        complianceStatus: {
+          euAiAct: {
+            'art-4': { assessment: 'overdue', lastAssessedDate: '2025-01-01', dueDate: '2026-01-01', notes: '' },
+          },
+          iso42001: {},
+          coSb205: {},
+        },
+      })
+      const result = calculateMaturityMetrics([discovery], [])
+      expect(result.overdueArticles).toBeGreaterThanOrEqual(1)
+    })
+
+    it('should count not applicable articles', () => {
+      const discovery = makeDiscovery({
+        complianceStatus: {
+          euAiAct: {
+            'art-4': { assessment: 'not_applicable', lastAssessedDate: '2026-03-01', dueDate: null, notes: '' },
+          },
+          iso42001: {},
+          coSb205: {},
+        },
+      })
+      const result = calculateMaturityMetrics([discovery], [])
+      expect(result.notApplicableArticles).toBeGreaterThanOrEqual(1)
+    })
+
+    it('should calculate average assessment days', () => {
+      const oldDate = new Date()
+      oldDate.setDate(oldDate.getDate() - 30)
+      const discovery = makeDiscovery({
+        complianceStatus: {
+          euAiAct: {
+            'art-4': { assessment: 'complete', lastAssessedDate: oldDate.toISOString(), dueDate: null, notes: '' },
+          },
+          iso42001: {},
+          coSb205: {},
+        },
+      })
+      const result = calculateMaturityMetrics([discovery], [])
+      expect(result.averageAssessmentDays).toBeGreaterThanOrEqual(28)
+      expect(result.averageAssessmentDays).toBeLessThanOrEqual(32)
+    })
+  })
+
+  describe('calculateMaturityTrend', () => {
+    it('should return unknown for less than 2 snapshots', () => {
+      const result = calculateMaturityTrend([{ date: '2026-03-01', score: 50 }])
+      expect(result.trend).toBe('unknown')
+      expect(result.delta).toBe(0)
+    })
+
+    it('should detect improving trend when recent score is higher', () => {
+      const snapshots = [
+        { date: '2026-01-01', score: 30 },
+        { date: '2026-02-01', score: 40 },
+        { date: '2026-03-01', score: 60 },
+      ]
+      const result = calculateMaturityTrend(snapshots)
+      expect(result.trend).toBe('improving')
+      expect(result.delta).toBeGreaterThan(5)
+    })
+
+    it('should detect declining trend when recent score is lower', () => {
+      const snapshots = [
+        { date: '2026-01-01', score: 70 },
+        { date: '2026-02-01', score: 60 },
+        { date: '2026-03-01', score: 40 },
+      ]
+      const result = calculateMaturityTrend(snapshots)
+      expect(result.trend).toBe('declining')
+      expect(result.delta).toBeLessThan(-5)
+    })
+
+    it('should detect stable trend when delta is within threshold', () => {
+      const snapshots = [
+        { date: '2026-01-01', score: 50 },
+        { date: '2026-02-01', score: 52 },
+        { date: '2026-03-01', score: 48 },
+      ]
+      const result = calculateMaturityTrend(snapshots)
+      expect(result.trend).toBe('stable')
     })
   })
 })

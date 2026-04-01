@@ -43,6 +43,13 @@ export interface FullDiscoveryRecord extends DiscoveryInfo {
     newValue: string
     changedBy: string | null
   }>
+  detectionEvents: Array<{
+    id: string
+    timestamp: string
+    type: string
+    visitCount: number
+    details: string
+  }>
 }
 
 type ExtensionFixtures = {
@@ -105,6 +112,7 @@ export async function resetExtension(sw: Worker): Promise<void> {
         dateFormat: 'DD/MM/YYYY',
         customDomains: [],
         excludedDomains: [],
+        detectionThrottleMs: 5000,
         regulationConfig: {
           euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
           iso42001: { enabled: true, customDueDateOffsetDays: 90 },
@@ -125,6 +133,19 @@ export async function resetExtension(sw: Worker): Promise<void> {
           adminEmail: '',
           adminRole: 'compliance_officer',
           department: '',
+        },
+        retentionPolicy: {
+          discoveryRetentionDays: 365,
+          snapshotRetentionDays: 730,
+          activityLogRetentionDays: 180,
+        },
+        exportConfig: {
+          defaultFormat: 'html',
+          includeInventory: true,
+          includeComplianceMap: true,
+          includeRecommendations: true,
+          includeAuditTrail: true,
+          defaultDateRangeDays: 0,
         },
       },
       activity_log: [],
@@ -205,6 +226,7 @@ export async function seedDiscoveries(
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [],
   }))
 
   await sw.evaluate(async (data: FullDiscoveryRecord[]) => {

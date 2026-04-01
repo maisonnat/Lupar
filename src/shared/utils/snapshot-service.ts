@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { DiscoveryRecord } from '@shared/types/discovery'
 import type { ComplianceSnapshot, SnapshotTrigger } from '@shared/types/compliance'
 import { STORAGE_KEYS } from '@shared/types/storage'
-import { mapCompliance } from './compliance-mapper'
+import { mapCompliance } from '@options/utils/compliance-mapper'
 
 export const MAX_SNAPSHOTS = 50
 
@@ -20,7 +20,7 @@ export async function takeSnapshot(
     totalTools: discoveries.length,
     totalGaps: result.totalGaps,
     regulationBreakdown: Object.fromEntries(
-      result.summaries.map((s) => [
+      result.summaries.map((s: { regulationId: string; complete: number; pending: number; overdue: number; notApplicable: number }) => [
         s.regulationId,
         {
           complete: s.complete,

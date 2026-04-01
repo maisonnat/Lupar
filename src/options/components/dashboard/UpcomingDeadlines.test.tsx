@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import UpcomingDeadlines from '@options/components/dashboard/UpcomingDeadlines'
 import { mockStore } from '../../../../vitest.setup'
-import type { UpcomingDeadline } from '@options/utils/risk-calculator'
+import type { UpcomingDeadline } from '@shared/utils/risk-calculator'
 
 const mockStoreGet = mockStore
 

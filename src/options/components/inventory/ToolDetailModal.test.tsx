@@ -40,6 +40,20 @@ function createMockSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       adminRole: 'compliance_officer',
       department: '',
     },
+    retentionPolicy: {
+      discoveryRetentionDays: 365,
+      snapshotRetentionDays: 730,
+      activityLogRetentionDays: 180,
+    },
+    detectionThrottleMs: 5000,
+    exportConfig: {
+      defaultFormat: 'html',
+      includeInventory: true,
+      includeComplianceMap: true,
+      includeRecommendations: true,
+      includeAuditTrail: true,
+      defaultDateRangeDays: 0,
+    },
     ...overrides,
   }
 }
@@ -61,6 +75,7 @@ function createMockDiscovery(overrides: Partial<DiscoveryRecord> = {}): Discover
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [],
     ...overrides,
   }
 }

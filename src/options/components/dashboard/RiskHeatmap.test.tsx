@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import RiskHeatmap from '@options/components/dashboard/RiskHeatmap'
-import type { HeatmapData } from '@options/utils/risk-calculator'
+import type { HeatmapData } from '@shared/utils/risk-calculator'
 
 function makeEmptyData(): HeatmapData {
   return { departments: [], cells: {}, maxCount: 0, totalTools: 0 }

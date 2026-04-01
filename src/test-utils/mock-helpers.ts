@@ -1,4 +1,4 @@
-import type { ComplianceStatusMap } from '@shared/types/discovery'
+import type { ComplianceStatusMap, DetectionEvent } from '@shared/types/discovery'
 import type { AssessmentStatus } from '@shared/types/compliance'
 
 type ChecklistOverride = { assessment: AssessmentStatus; lastAssessedDate: string | null; dueDate: string | null; notes: string }
@@ -66,4 +66,21 @@ export function setAllArticlesComplete(lastAssessedDate: string): Record<string,
 
 export function setAllArticlesNotApplicable(): Record<string, ChecklistOverride> {
   return setAllArticles('not_applicable')
+}
+
+export function createMockDetectionEvent(overrides: Partial<{
+  id: string
+  timestamp: string
+  type: 'first_seen' | 'visit' | 'status_change' | 'risk_change'
+  visitCount: number
+  details: string
+}> = {}): DetectionEvent {
+  return {
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    type: 'first_seen',
+    visitCount: 1,
+    details: 'Initial detection',
+    ...overrides,
+  }
 }

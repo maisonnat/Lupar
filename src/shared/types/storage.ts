@@ -20,6 +20,7 @@ export interface ActivityLogEntry {
 
 export interface CustomDomainEntry {
   domain: string;
+  pattern?: string;
   toolName: string;
   category: AICategory;
   defaultRiskLevel: RiskLevel;
@@ -51,7 +52,24 @@ export interface AlertConfig {
   maxUnassessedCount: number;
 }
 
+export interface RetentionPolicy {
+  discoveryRetentionDays: number;
+  snapshotRetentionDays: number;
+  activityLogRetentionDays: number;
+}
+
 export type DateFormat = 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD'
+
+export type ExportFormat = 'html' | 'csv' | 'json'
+
+export interface ExportConfig {
+  defaultFormat: ExportFormat
+  includeInventory: boolean
+  includeComplianceMap: boolean
+  includeRecommendations: boolean
+  includeAuditTrail: boolean
+  defaultDateRangeDays: number
+}
 
 export interface AppSettings {
   version: string;
@@ -65,10 +83,13 @@ export interface AppSettings {
   dateFormat: DateFormat;
   customDomains: CustomDomainEntry[];
   excludedDomains: string[];
+  detectionThrottleMs: number;
   regulationConfig: Record<RegulationType, RegulationConfig>;
   auditModeConfig: AuditModeConfig;
   alertConfig: AlertConfig;
   adminProfile: AdminProfile;
+  retentionPolicy: RetentionPolicy;
+  exportConfig: ExportConfig;
 }
 
 export interface StorageSchema {

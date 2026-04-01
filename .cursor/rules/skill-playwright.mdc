@@ -1,0 +1,28 @@
+---
+description: Best practices for E2E, component, and extension testing using Playwright.
+globs: e2e/**/*.spec.ts, **/*.test.ts
+---
+
+# Skill: Playwright Best Practices
+Use this skill when writing Playwright tests, fixing flaky tests, or debugging failures.
+
+## Testing Patterns
+- **Page Object Model (POM)**: Use for structured and maintainable test suites.
+- **Fixtures & Hooks**: Encapsulate setup logic in fixtures rather than `beforeEach`.
+- **Locators**: Prefer user-facing attributes (`getByRole`, `getByText`, `getByLabel`).
+- **Assertions**: Use web-first assertions (`expect(locator).toBeVisible()`).
+- **Extension Testing**: Follow specific patterns for Chrome Extension Manifest V3 testing.
+
+## Advanced Scenarios
+- **API Mocking**: Mock network requests to isolate the frontend.
+- **Clock Mocking**: Control time for date-dependent tests.
+- **Accessibility**: Use `axe-core` to automate a11y checks.
+- **Debugging**: Use the Playwright Trace Viewer and UI mode for troubleshooting.
+
+## Best Practices
+- Avoid `page.pause()` and hard-coded timeouts (`waitForTimeout`).
+- Use tags (`@smoke`, `@fast`) to filter test execution.
+- Ensure test isolation to prevent state leakage between runs.
+
+## Reference
+See `c:\Proyectos\Lupar\.agents\skills\playwright-best-practices\SKILL.md` for a complete activity guide.

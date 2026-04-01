@@ -23,6 +23,7 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [],
     ...overrides,
   }
 }

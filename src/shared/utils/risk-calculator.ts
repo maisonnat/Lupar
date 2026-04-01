@@ -455,3 +455,114 @@ export function detectSurge(
     newTools,
   }
 }
+
+export interface MaturityMetrics {
+  coveragePercent: number
+  averageAssessmentDays: number | null
+  trend: 'improving' | 'stable' | 'declining' | 'unknown'
+  trendDelta: number
+  totalArticles: number
+  assessedArticles: number
+  pendingArticles: number
+  overdueArticles: number
+  notApplicableArticles: number
+  recentAssessments: number
+}
+
+export interface MaturityTrendData {
+  snapshots: { date: string; score: number }[]
+  trend: 'improving' | 'stable' | 'declining' | 'unknown'
+  delta: number
+}
+
+export function calculateMaturityMetrics(
+  discoveries: DiscoveryRecord[],
+  snapshots: { date: string; score: number }[],
+): MaturityMetrics {
+  const now = new Date()
+  let totalArticles = 0
+  let assessedArticles = 0
+  let pendingArticles = 0
+  let overdueArticles = 0
+  let notApplicableArticles = 0
+  let totalAssessmentDays = 0
+  let assessmentsWithDate = 0
+
+  for (const d of discoveries) {
+    for (const articleMap of Object.values(d.complianceStatus)) {
+      for (const checklist of Object.values(articleMap) as ComplianceChecklist[]) {
+        totalArticles++
+
+        if (checklist.assessment === 'complete') {
+          assessedArticles++
+          if (checklist.lastAssessedDate) {
+            const assessedDate = new Date(checklist.lastAssessedDate)
+            const days = Math.floor((now.getTime() - assessedDate.getTime()) / (1000 * 60 * 60 * 24))
+            totalAssessmentDays += days
+            assessmentsWithDate++
+          }
+        } else if (checklist.assessment === 'pending') {
+          pendingArticles++
+        } else if (checklist.assessment === 'overdue') {
+          overdueArticles++
+        } else if (checklist.assessment === 'not_applicable') {
+          notApplicableArticles++
+        }
+      }
+    }
+  }
+
+  const coveragePercent = totalArticles > 0 ? Math.round((assessedArticles / totalArticles) * 100) : 0
+  const averageAssessmentDays = assessmentsWithDate > 0 ? Math.round(totalAssessmentDays / assessmentsWithDate) : null
+
+  const recentAssessments = discoveries.filter((d) => {
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    for (const articleMap of Object.values(d.complianceStatus)) {
+      for (const checklist of Object.values(articleMap) as ComplianceChecklist[]) {
+        if (checklist.assessment === 'complete' && checklist.lastAssessedDate) {
+          if (new Date(checklist.lastAssessedDate) >= sevenDaysAgo) return true
+        }
+      }
+    }
+    return false
+  }).length
+
+  const trendData = calculateMaturityTrend(snapshots)
+
+  return {
+    coveragePercent,
+    averageAssessmentDays,
+    trend: trendData.trend,
+    trendDelta: trendData.delta,
+    totalArticles,
+    assessedArticles,
+    pendingArticles,
+    overdueArticles,
+    notApplicableArticles,
+    recentAssessments,
+  }
+}
+
+export function calculateMaturityTrend(
+  snapshots: { date: string; score: number }[],
+): MaturityTrendData {
+  if (snapshots.length < 2) {
+    return { snapshots, trend: 'unknown', delta: 0 }
+  }
+
+  const sorted = [...snapshots].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  const recent = sorted.slice(-3)
+  const older = sorted.slice(0, Math.max(1, sorted.length - 3))
+
+  const recentAvg = recent.reduce((sum, s) => sum + s.score, 0) / recent.length
+  const olderAvg = older.reduce((sum, s) => sum + s.score, 0) / older.length
+
+  const delta = Math.round(recentAvg - olderAvg)
+
+  let trend: 'improving' | 'stable' | 'declining'
+  if (delta > 5) trend = 'improving'
+  else if (delta < -5) trend = 'declining'
+  else trend = 'stable'
+
+  return { snapshots: sorted, trend, delta }
+}

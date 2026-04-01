@@ -23,6 +23,7 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [],
     ...overrides,
   }
 }
@@ -33,34 +34,47 @@ const defaultSettings = {
   responsiblePerson: 'Juan Pérez',
   installationDate: '',
   badgeNotifications: true,
-    requireDepartment: false,
-    snapshotFrequencyDays: 0,
-    timezone: 'America/Argentina/Buenos_Aires',
-    dateFormat: 'DD/MM/YYYY',
-    customDomains: [],
-    excludedDomains: [],
-    regulationConfig: {
-      euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
-      iso42001: { enabled: true, customDueDateOffsetDays: 90 },
-      coSb205: { enabled: false, customDueDateOffsetDays: 90 },
-    },
-    auditModeConfig: {
-      auditMode: false,
-      auditModeActivatedAt: null,
-      auditModeActivatedBy: null,
-    },
-    alertConfig: {
-      assessmentDueDays: [30, 15, 7, 1],
-      newDetectionRiskLevels: ['prohibited', 'high', 'limited', 'minimal'],
-      maxUnassessedCount: 10,
-    },
-    adminProfile: {
-      adminName: '',
-      adminEmail: '',
-      adminRole: 'compliance_officer',
-      department: '',
-    },
-  }
+  requireDepartment: false,
+  snapshotFrequencyDays: 0,
+  timezone: 'America/Argentina/Buenos_Aires',
+  dateFormat: 'DD/MM/YYYY',
+  customDomains: [],
+  excludedDomains: [],
+  regulationConfig: {
+    euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
+    iso42001: { enabled: true, customDueDateOffsetDays: 90 },
+    coSb205: { enabled: false, customDueDateOffsetDays: 90 },
+  },
+  auditModeConfig: {
+    auditMode: false,
+    auditModeActivatedAt: null,
+    auditModeActivatedBy: null,
+  },
+  alertConfig: {
+    assessmentDueDays: [30, 15, 7, 1],
+    newDetectionRiskLevels: ['prohibited', 'high', 'limited', 'minimal'],
+    maxUnassessedCount: 10,
+  },
+  adminProfile: {
+    adminName: '',
+    adminEmail: '',
+    adminRole: 'compliance_officer',
+    department: '',
+  },
+  retentionPolicy: {
+    discoveryRetentionDays: 365,
+    snapshotRetentionDays: 730,
+    activityLogRetentionDays: 180,
+  },
+  exportConfig: {
+    defaultFormat: 'html',
+    includeInventory: true,
+    includeComplianceMap: true,
+    includeRecommendations: true,
+    includeAuditTrail: true,
+    defaultDateRangeDays: 0,
+  },
+}
 
 async function renderReports() {
   render(<Reports />)
@@ -134,5 +148,57 @@ describe('Reports', () => {
     expect(log).toBeDefined()
     expect(log.length).toBeGreaterThan(0)
     expect(log[log.length - 1].eventType).toBe('report_generated')
+  })
+
+  it('should show export config section when discoveries exist', async () => {
+    mockStore['ai_discoveries'] = [makeDiscovery()]
+    mockStore['app_settings'] = defaultSettings
+    mockStore['activity_log'] = []
+    mockStore['compliance_snapshots'] = []
+
+    await renderReports()
+
+    expect(screen.getByText('Configuración de Exportación')).toBeInTheDocument()
+    expect(screen.getByText('Formato')).toBeInTheDocument()
+    expect(screen.getByText('Rango de fechas')).toBeInTheDocument()
+  })
+
+  it('should show format options and date range selector', async () => {
+    mockStore['ai_discoveries'] = [makeDiscovery()]
+    mockStore['app_settings'] = defaultSettings
+    mockStore['activity_log'] = []
+    mockStore['compliance_snapshots'] = []
+
+    await renderReports()
+
+    expect(screen.getByText('HTML')).toBeInTheDocument()
+    expect(screen.getByText('CSV')).toBeInTheDocument()
+    expect(screen.getByText('JSON')).toBeInTheDocument()
+    expect(screen.getByText('Todo el período')).toBeInTheDocument()
+  })
+
+  it('should show section toggles for HTML format', async () => {
+    mockStore['ai_discoveries'] = [makeDiscovery()]
+    mockStore['app_settings'] = defaultSettings
+    mockStore['activity_log'] = []
+    mockStore['compliance_snapshots'] = []
+
+    await renderReports()
+
+    expect(screen.getByText('Inventario de herramientas')).toBeInTheDocument()
+    expect(screen.getByText('Mapa de cumplimiento')).toBeInTheDocument()
+    expect(screen.getByText('Recomendaciones')).toBeInTheDocument()
+    expect(screen.getByText('Historial de cambios')).toBeInTheDocument()
+  })
+
+  it('should show tool count in range', async () => {
+    mockStore['ai_discoveries'] = [makeDiscovery()]
+    mockStore['app_settings'] = defaultSettings
+    mockStore['activity_log'] = []
+    mockStore['compliance_snapshots'] = []
+
+    await renderReports()
+
+    expect(screen.getByText(/Herramientas en rango:/)).toBeInTheDocument()
   })
 })

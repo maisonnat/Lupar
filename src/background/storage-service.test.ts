@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mockStore } from '../../vitest.setup'
-import { createMockComplianceStatus } from '@test-utils/mock-helpers'
+import { createMockComplianceStatus, createMockDetectionEvent } from '@test-utils/mock-helpers'
 import {
   getDiscoveries,
   saveDiscovery,
@@ -55,6 +55,20 @@ function createMockSettings(): AppSettings {
       adminRole: 'compliance_officer',
       department: '',
     },
+    retentionPolicy: {
+      discoveryRetentionDays: 365,
+      snapshotRetentionDays: 730,
+      activityLogRetentionDays: 180,
+    },
+    detectionThrottleMs: 5000,
+    exportConfig: {
+      defaultFormat: 'html',
+      includeInventory: true,
+      includeComplianceMap: true,
+      includeRecommendations: true,
+      includeAuditTrail: true,
+      defaultDateRangeDays: 0,
+    },
   }
 }
 
@@ -75,6 +89,7 @@ function createMockDiscovery(overrides: Partial<DiscoveryRecord> = {}): Discover
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [createMockDetectionEvent()],
     ...overrides,
   }
 }

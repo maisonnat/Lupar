@@ -1,5 +1,5 @@
-import type { HeatmapData } from '@options/utils/risk-calculator'
-import { RISK_LEVEL_ORDER, NO_DEPARTMENT_LABEL } from '@options/utils/risk-calculator'
+import type { HeatmapData } from '@shared/utils/risk-calculator'
+import { RISK_LEVEL_ORDER, NO_DEPARTMENT_LABEL } from '@shared/utils/risk-calculator'
 import { RISK_LEVEL_LABELS, RISK_LEVEL_COLORS } from '@shared/constants/risk-levels'
 
 interface RiskHeatmapProps {

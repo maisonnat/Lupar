@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { takeSnapshot, getSnapshots, deleteSnapshot, checkAndTakeScheduledSnapshot, MAX_SNAPSHOTS } from '@options/utils/snapshot-service'
+import { takeSnapshot, getSnapshots, deleteSnapshot, checkAndTakeScheduledSnapshot, MAX_SNAPSHOTS } from '@shared/utils/snapshot-service'
 import type { DiscoveryRecord } from '@shared/types/discovery'
-import { createMockComplianceStatus } from '@test-utils/mock-helpers'
+import { createMockComplianceStatus, createMockDetectionEvent } from '@test-utils/mock-helpers'
 
 function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecord {
   return {
@@ -20,6 +20,7 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [createMockDetectionEvent()],
     ...overrides,
   }
 }

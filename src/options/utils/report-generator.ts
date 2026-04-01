@@ -3,11 +3,13 @@ import type { AppSettings, AuditModeConfig, AdminRole } from '@shared/types/stor
 import type { RiskLevel } from '@shared/types/domain'
 import type { ComplianceMapResult, ComplianceGap } from '@options/utils/compliance-mapper'
 import { mapCompliance } from '@options/utils/compliance-mapper'
-import { calculateRiskScore } from '@options/utils/risk-calculator'
+import { calculateRiskScore } from '@shared/utils/risk-calculator'
 import { RISK_LEVEL_LABELS, DISCOVERY_STATUS_LABELS } from '@shared/constants/risk-levels'
 import { CATEGORY_LABELS } from '@shared/constants/categories'
+import { REGULATIONS } from '@shared/constants/regulations'
 import { AUDIT_FIELD_LABELS } from '@options/utils/audit-trail'
 import { formatDateLong, detectTimezone } from '@shared/utils/date-utils'
+import type { ComplianceSnapshot } from '@shared/types/compliance'
 
 const ADMIN_ROLE_LABELS: Record<AdminRole, string> = {
   compliance_officer: 'Oficial de Compliance',
@@ -65,6 +67,21 @@ const CSS = `
   .reg-name { font-weight: 600; }
   .reg-pct { font-size: 14px; color: #6b7280; }
   .footer { padding: 24px 60px; text-align: center; font-size: 11px; color: #9ca3af; }
+  .governance-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .governance-item { background: #f9fafb; padding: 12px; border-radius: 6px; }
+  .governance-label { font-size: 11px; color: #6b7280; text-transform: uppercase; }
+  .governance-value { font-size: 14px; font-weight: 500; color: #1f2937; margin-top: 4px; }
+  .timeline-chart { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding: 16px 0; }
+  .timeline-bar { flex: 1; background: #3b82f6; border-radius: 4px 4px 0 0; min-width: 24px; position: relative; }
+  .timeline-bar:hover { background: #2563eb; }
+  .timeline-bar-label { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #6b7280; }
+  .timeline-bar-value { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 600; color: #374151; }
+  .signature-box { border: 2px dashed #d1d5db; border-radius: 8px; padding: 32px; text-align: center; background: #fafafa; }
+  .signature-line { border-top: 1px solid #6b7280; width: 200px; margin: 32px auto 8px; }
+  .signature-label { font-size: 12px; color: #6b7280; }
+  .appendix-article { margin-bottom: 16px; padding: 12px; background: #f9fafb; border-radius: 6px; border-left: 3px solid #3b82f6; }
+  .appendix-title { font-weight: 600; color: #1e40af; font-size: 13px; }
+  .appendix-desc { font-size: 12px; color: #4b5563; margin-top: 4px; }
   @media print { body { background: white; } .page { max-width: none; } .section { break-inside: avoid; } }
 `
 
@@ -121,6 +138,59 @@ function generateCover(
       </div>
       <div class="disclaimer">
         Este reporte fue generado automáticamente por AI Compliance Tracker. La información contenida es orientativa y no constituye asesoramiento legal. Consulte con un profesional para validación formal.
+      </div>
+    </div>`
+}
+
+function generateGovernanceSection(
+  settings: AppSettings,
+  timezone: string,
+  snapshots: { date: string; overallScore: number }[],
+): string {
+  const profile = settings.adminProfile
+  const lastReviewDate = snapshots.length > 0
+    ? formatDateLong(snapshots[snapshots.length - 1].date, timezone)
+    : 'No disponible'
+  
+  const lastScore = snapshots.length > 0
+    ? snapshots[snapshots.length - 1].overallScore
+    : 0
+
+  const adminName = profile?.adminName || settings.responsiblePerson || 'No asignado'
+  const adminRole = profile?.adminRole
+    ? ADMIN_ROLE_LABELS[profile.adminRole]
+    : 'No especificado'
+  const adminEmail = profile?.adminEmail || ''
+  const adminDept = profile?.department || ''
+
+  return `
+    <div class="section">
+      <h2 class="section-title">Gobernanza de IA</h2>
+      <div class="governance-grid">
+        <div class="governance-item">
+          <div class="governance-label">Responsable de Compliance</div>
+          <div class="governance-value">${escapeHtml(adminName)}</div>
+        </div>
+        <div class="governance-item">
+          <div class="governance-label">Rol</div>
+          <div class="governance-value">${escapeHtml(adminRole)}</div>
+        </div>
+        <div class="governance-item">
+          <div class="governance-label">Email</div>
+          <div class="governance-value">${escapeHtml(adminEmail) || 'No especificado'}</div>
+        </div>
+        <div class="governance-item">
+          <div class="governance-label">Departamento</div>
+          <div class="governance-value">${escapeHtml(adminDept) || 'No especificado'}</div>
+        </div>
+        <div class="governance-item">
+          <div class="governance-label">Última Revisión</div>
+          <div class="governance-value">${lastReviewDate}</div>
+        </div>
+        <div class="governance-item">
+          <div class="governance-label">Score de Compliance</div>
+          <div class="governance-value">${lastScore}%</div>
+        </div>
       </div>
     </div>`
 }
@@ -219,6 +289,48 @@ function generateInventoryTable(discoveries: DiscoveryRecord[], timezone: string
     </div>`
 }
 
+function generateTimelineSection(
+  discoveries: DiscoveryRecord[],
+  _timezone: string,
+): string {
+  const monthCounts: Record<string, number> = {}
+  const now = new Date()
+  
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = d.toISOString().slice(0, 7)
+    monthCounts[key] = 0
+  }
+
+  for (const d of discoveries) {
+    const month = d.firstSeen.slice(0, 7)
+    if (month in monthCounts) {
+      monthCounts[month]++
+    }
+  }
+
+  const maxCount = Math.max(...Object.values(monthCounts), 1)
+  
+  const bars = Object.entries(monthCounts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, count]) => {
+      const height = Math.max((count / maxCount) * 100, 5)
+      const label = month.slice(5)
+      return `<div class="timeline-bar" style="height:${height}%">
+        ${count > 0 ? `<span class="timeline-bar-value">${count}</span>` : ''}
+        <span class="timeline-bar-label">${label}</span>
+      </div>`
+    })
+    .join('')
+
+  return `
+    <div class="section">
+      <h2 class="section-title">Timeline de Detección</h2>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:16px">Detecciones por mes (últimos 12 meses)</p>
+      <div class="timeline-chart">${bars}</div>
+    </div>`
+}
+
 function generateComplianceMap(compliance: ComplianceMapResult): string {
   const progressBars = compliance.summaries
     .map((s) => {
@@ -267,6 +379,59 @@ function generateComplianceMap(compliance: ComplianceMapResult): string {
           </tr>
         </thead>
         <tbody>${gapRows}</tbody>
+      </table>
+    </div>`
+}
+
+function generateBrechasConDeadlines(
+  compliance: ComplianceMapResult,
+  timezone: string,
+): string {
+  const gapsWithDeadlines = compliance.allGaps
+    .filter((g) => g.dueDate)
+    .sort((a, b) => {
+      if (!a.dueDate || !b.dueDate) return 0
+      return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+    })
+    .slice(0, 30)
+
+  if (gapsWithDeadlines.length === 0) {
+    return `
+      <div class="section">
+        <h2 class="section-title">Brechas con Fechas de Compromiso</h2>
+        <p style="text-align:center;color:#6b7280;padding:24px">No hay brechas con fechas de vencimiento definidas.</p>
+      </div>`
+  }
+
+  const rows = gapsWithDeadlines
+    .map((g) => {
+      const dueDate = g.dueDate ? formatDateLong(g.dueDate, timezone) : 'N/A'
+      const isOverdue = g.dueDate && new Date(g.dueDate) < new Date()
+      const rowStyle = isOverdue ? 'background:#fef2f2' : ''
+      return `<tr style="${rowStyle}">
+        <td>${g.regulationName}</td>
+        <td>${escapeHtml(g.articleTitle)}</td>
+        <td>${escapeHtml(g.toolName)}</td>
+        <td><span class="${badgeClass(g.assessment)}">${g.assessment}</span></td>
+        <td style="${isOverdue ? 'color:#dc2626;font-weight:600' : ''}">${dueDate}</td>
+      </tr>`
+    })
+    .join('')
+
+  return `
+    <div class="section">
+      <h2 class="section-title">Brechas con Fechas de Compromiso</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Regulación</th>
+            <th>Requisito</th>
+            <th>Herramienta</th>
+            <th>Estado</th>
+            <th>Fecha límite</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
       </table>
     </div>`
 }
@@ -325,43 +490,6 @@ function generateRecommendations(compliance: ComplianceMapResult): string {
     </div>`
 }
 
-export async function generateContentHash(content: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(content)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-function generateAuditBadge(auditModeConfig: AuditModeConfig, contentHash: string, timezone: string): string {
-  if (!auditModeConfig.auditMode) return ''
-
-  const activatedAt = auditModeConfig.auditModeActivatedAt
-    ? formatDateLong(auditModeConfig.auditModeActivatedAt, timezone)
-    : 'No disponible'
-
-  const activatedBy = auditModeConfig.auditModeActivatedBy || 'No especificado'
-
-  return `
-    <div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;padding:20px;margin:0 60px 20px">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          <path d="M9 12l2 2 4-4"/>
-        </svg>
-        <span style="font-size:16px;font-weight:700;color:#92400e">MODO AUDITOR — DATOS EN SOLO LECTURA</span>
-      </div>
-      <div style="font-size:13px;color:#92400e;line-height:1.8">
-        <div><strong>Activado por:</strong> ${escapeHtml(activatedBy)}</div>
-        <div><strong>Fecha de activación:</strong> ${activatedAt}</div>
-        <div style="margin-top:8px">
-          <strong>Hash de integridad (SHA-256):</strong><br>
-          <code style="font-size:11px;background:#fffbeb;padding:4px 8px;border-radius:4px;word-break:break-all;display:inline-block;margin-top:4px">${contentHash}</code>
-        </div>
-      </div>
-    </div>`
-}
-
 function generateAuditTrailSection(discoveries: DiscoveryRecord[], timezone: string): string {
   const toolsWithTrail = discoveries.filter((d) => d.auditTrail.length > 0)
 
@@ -406,9 +534,99 @@ function generateAuditTrailSection(discoveries: DiscoveryRecord[], timezone: str
     </div>`
 }
 
+function generateSignatureSection(settings: AppSettings): string {
+  const adminName = settings.adminProfile?.adminName || settings.responsiblePerson || ''
+  const adminRole = settings.adminProfile?.adminRole
+    ? ADMIN_ROLE_LABELS[settings.adminProfile.adminRole]
+    : ''
+
+  return `
+    <div class="section">
+      <h2 class="section-title">Firmas</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">
+        <div class="signature-box">
+          <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:8px">Responsable de Compliance</div>
+          <div style="font-size:13px;color:#6b7280;margin-bottom:16px">${adminRole}</div>
+          <div class="signature-line"></div>
+          <div class="signature-label">${escapeHtml(adminName) || 'Nombre y apellido'}</div>
+        </div>
+        <div class="signature-box">
+          <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:8px">Aprobación Ejecutiva</div>
+          <div style="font-size:13px;color:#6b7280;margin-bottom:16px">C-Level o Director</div>
+          <div class="signature-line"></div>
+          <div class="signature-label">Nombre y apellido</div>
+        </div>
+      </div>
+    </div>`
+}
+
+function generateAppendixSection(): string {
+  const articlesHtml = Object.values(REGULATIONS)
+    .map((reg) => {
+      const articlesList = reg.articles
+        .map((art) => `
+          <div class="appendix-article">
+            <div class="appendix-title">${escapeHtml(art.title)}</div>
+            <div class="appendix-desc">${escapeHtml(art.description)}</div>
+          </div>`)
+        .join('')
+      return `
+        <div style="margin-bottom:24px">
+          <h3 style="font-size:16px;font-weight:700;color:#1e40af;margin-bottom:12px">${escapeHtml(reg.name)}</h3>
+          <p style="font-size:12px;color:#6b7280;margin-bottom:16px">${escapeHtml(reg.description)}</p>
+          ${articlesList}
+        </div>`
+    })
+    .join('')
+
+  return `
+    <div class="section">
+      <h2 class="section-title">Appendix: Regulaciones</h2>
+      ${articlesHtml}
+    </div>`
+}
+
+export async function generateContentHash(content: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(content)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function generateAuditBadge(auditModeConfig: AuditModeConfig, contentHash: string, timezone: string): string {
+  if (!auditModeConfig.auditMode) return ''
+
+  const activatedAt = auditModeConfig.auditModeActivatedAt
+    ? formatDateLong(auditModeConfig.auditModeActivatedAt, timezone)
+    : 'No disponible'
+
+  const activatedBy = auditModeConfig.auditModeActivatedBy || 'No especificado'
+
+  return `
+    <div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;padding:20px;margin:0 60px 20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M9 12l2 2 4-4"/>
+        </svg>
+        <span style="font-size:16px;font-weight:700;color:#92400e">MODO AUDITOR — DATOS EN SOLO LECTURA</span>
+      </div>
+      <div style="font-size:13px;color:#92400e;line-height:1.8">
+        <div><strong>Activado por:</strong> ${escapeHtml(activatedBy)}</div>
+        <div><strong>Fecha de activación:</strong> ${activatedAt}</div>
+        <div style="margin-top:8px">
+          <strong>Hash de integridad (SHA-256):</strong><br>
+          <code style="font-size:11px;background:#fffbeb;padding:4px 8px;border-radius:4px;word-break:break-all;display:inline-block;margin-top:4px">${contentHash}</code>
+        </div>
+      </div>
+    </div>`
+}
+
 export function generateReport(
   discoveries: DiscoveryRecord[],
   settings: AppSettings,
+  snapshots: ComplianceSnapshot[] = [],
 ): string {
   const now = new Date().toISOString()
   const timezone = settings.timezone ?? detectTimezone()
@@ -432,11 +650,16 @@ export function generateReport(
   <div class="page">
     ${generateCover(settings, discoveries.length, now, timezone)}
     ${auditPlaceholder}
+    ${generateGovernanceSection(settings, timezone, snapshots)}
     ${generateExecutiveSummary(discoveries, riskScore, compliance)}
     ${generateInventoryTable(discoveries, timezone)}
+    ${generateTimelineSection(discoveries, timezone)}
     ${generateComplianceMap(compliance)}
+    ${generateBrechasConDeadlines(compliance, timezone)}
     ${generateRecommendations(compliance)}
     ${generateAuditTrailSection(discoveries, timezone)}
+    ${generateSignatureSection(settings)}
+    ${generateAppendixSection()}
     <div class="footer">
       Generado por AI Compliance Tracker el ${formatDateLong(now, timezone)} · Reporte autocontenido — funciona offline
     </div>
@@ -450,8 +673,9 @@ export function generateReport(
 export async function generateReportWithHash(
   discoveries: DiscoveryRecord[],
   settings: AppSettings,
+  snapshots?: ComplianceSnapshot[],
 ): Promise<string> {
-  const html = generateReport(discoveries, settings)
+  const html = generateReport(discoveries, settings, snapshots)
   const isAuditMode = settings.auditModeConfig?.auditMode ?? false
 
   if (!isAuditMode) return html
@@ -481,4 +705,58 @@ export function downloadReport(html: string, date?: Date): void {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+export function generateCSV(discoveries: DiscoveryRecord[], _settings: AppSettings): string {
+  const headers = [
+    'Dominio',
+    'Nombre de Herramienta',
+    'Categoría',
+    'Nivel de Riesgo',
+    'Estado',
+    'Departamento',
+    'Visitas',
+    'Primera detección',
+    'Última visita',
+    'Notas',
+  ]
+
+  const rows = discoveries.map((d) => {
+    const risk = d.userRiskLevel ?? d.defaultRiskLevel
+    return [
+      d.domain,
+      d.toolName,
+      d.category,
+      risk,
+      d.status,
+      d.department ?? '',
+      d.visitCount.toString(),
+      d.firstSeen,
+      d.lastSeen,
+      (d.notes ?? '').replace(/,/g, ';'),
+    ].map((v) => `"${v.replace(/"/g, '""')}"`).join(',')
+  })
+
+  return [headers.join(','), ...rows].join('\n')
+}
+
+export interface JSONExportData {
+  discoveries: DiscoveryRecord[]
+  settings: AppSettings
+  sections: {
+    includeInventory: boolean
+    includeComplianceMap: boolean
+    includeRecommendations: boolean
+    includeAuditTrail: boolean
+  }
+  timezone: string
+  exportedAt?: string
+}
+
+export function generateJSON(data: JSONExportData): string {
+  const exportData: JSONExportData = {
+    ...data,
+    exportedAt: new Date().toISOString(),
+  }
+  return JSON.stringify(exportData, null, 2)
 }

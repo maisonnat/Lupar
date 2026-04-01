@@ -14,6 +14,7 @@ export type RiskLevel = 'prohibited' | 'high' | 'limited' | 'minimal';
 
 export interface DomainEntry {
   domain: string;
+  pattern?: string;
   toolName: string;
   category: AICategory;
   defaultRiskLevel: RiskLevel;

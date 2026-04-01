@@ -22,6 +22,16 @@ export interface AuditEntry {
   changedBy: string | null;
 }
 
+export type DetectionEventType = 'first_seen' | 'visit' | 'status_change' | 'risk_change';
+
+export interface DetectionEvent {
+  id: string;
+  timestamp: string;
+  type: DetectionEventType;
+  visitCount: number;
+  details: string;
+}
+
 export interface DiscoveryRecord {
   id: string;
   domain: string;
@@ -38,4 +48,5 @@ export interface DiscoveryRecord {
   notes: string;
   tags: string[];
   auditTrail: AuditEntry[];
+  detectionEvents: DetectionEvent[];
 }

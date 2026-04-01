@@ -11,7 +11,7 @@ import {
   ACTIVITY_LOG_MAX_ENTRIES,
 } from '@shared/types/storage'
 import type { RegulationType } from '@shared/types/compliance'
-import { calculateDueDate } from '@options/utils/risk-calculator'
+import { calculateDueDate } from '@shared/utils/risk-calculator'
 import { createArticleChecklistMap } from '@shared/constants/regulations'
 import { detectTimezone } from '@shared/utils/date-utils'
 
@@ -28,6 +28,7 @@ function createDefaultSettings(): AppSettings {
     dateFormat: 'DD/MM/YYYY',
     customDomains: [],
     excludedDomains: [],
+    detectionThrottleMs: 5000,
     regulationConfig: {
       euAiAct: { enabled: true, customDueDateOffsetDays: 90 },
       iso42001: { enabled: true, customDueDateOffsetDays: 90 },
@@ -48,6 +49,19 @@ function createDefaultSettings(): AppSettings {
       adminEmail: '',
       adminRole: 'compliance_officer',
       department: '',
+    },
+    retentionPolicy: {
+      discoveryRetentionDays: 365,
+      snapshotRetentionDays: 730,
+      activityLogRetentionDays: 180,
+    },
+    exportConfig: {
+      defaultFormat: 'html',
+      includeInventory: true,
+      includeComplianceMap: true,
+      includeRecommendations: true,
+      includeAuditTrail: true,
+      defaultDateRangeDays: 0,
     },
   }
 }
@@ -131,6 +145,15 @@ export async function createDiscovery(
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [
+      {
+        id: uuidv4(),
+        timestamp: now,
+        type: 'first_seen',
+        visitCount: 1,
+        details: `Herramienta detectada por primera vez: ${toolName}`,
+      },
+    ],
   }
 
   await saveDiscovery(record)
@@ -341,6 +364,64 @@ export async function clearAll(): Promise<void> {
   } catch (error) {
     throw new StorageError('Error limpiando almacenamiento', error)
   }
+}
+
+export interface PurgeResult {
+  discoveriesRemoved: number
+  snapshotsRemoved: number
+  activityLogRemoved: number
+}
+
+export async function purgeExpiredData(settings: AppSettings): Promise<PurgeResult> {
+  const retention = settings.retentionPolicy
+  const now = Date.now()
+  const dayMs = 24 * 60 * 60 * 1000
+
+  const discoveryCutoff = now - retention.discoveryRetentionDays * dayMs
+  const snapshotCutoff = now - retention.snapshotRetentionDays * dayMs
+  const activityCutoff = now - retention.activityLogRetentionDays * dayMs
+
+  let discoveriesRemoved = 0
+  let snapshotsRemoved = 0
+  let activityLogRemoved = 0
+
+  try {
+    const discoveries = await getDiscoveries()
+    const filteredDiscoveries = discoveries.filter((d) => {
+      const firstSeen = new Date(d.firstSeen).getTime()
+      const keep = firstSeen >= discoveryCutoff
+      if (!keep) discoveriesRemoved++
+      return keep
+    })
+    await writeKey(STORAGE_KEYS.AI_DISCOVERIES, filteredDiscoveries)
+
+    const snapshots = await readKey<unknown[]>(STORAGE_KEYS.COMPLIANCE_SNAPSHOTS, [])
+    const filteredSnapshots = snapshots.filter((s: unknown) => {
+      const sObj = s as { date: string }
+      const date = new Date(sObj.date).getTime()
+      const keep = date >= snapshotCutoff
+      if (!keep) snapshotsRemoved++
+      return keep
+    })
+    await writeKey(STORAGE_KEYS.COMPLIANCE_SNAPSHOTS, filteredSnapshots)
+
+    const activityLog = await readKey<ActivityLogEntry[]>(STORAGE_KEYS.ACTIVITY_LOG, [])
+    const filteredActivityLog = activityLog.filter((entry) => {
+      const timestamp = new Date(entry.timestamp).getTime()
+      const keep = timestamp >= activityCutoff
+      if (!keep) activityLogRemoved++
+      return keep
+    })
+    await writeKey(STORAGE_KEYS.ACTIVITY_LOG, filteredActivityLog)
+
+    console.log(
+      `[Lupar] Purge completed: ${discoveriesRemoved} discoveries, ${snapshotsRemoved} snapshots, ${activityLogRemoved} activity log entries removed`,
+    )
+  } catch (error) {
+    console.error('[Lupar] Error during data purge:', error)
+  }
+
+  return { discoveriesRemoved, snapshotsRemoved, activityLogRemoved }
 }
 
 export { StorageError }

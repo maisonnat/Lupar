@@ -1,4 +1,4 @@
-import type { UpcomingDeadline, DeadlineUrgency } from '@options/utils/risk-calculator'
+import type { UpcomingDeadline, DeadlineUrgency } from '@shared/utils/risk-calculator'
 import { useDateConfig } from '@options/hooks/useDateConfig'
 import { formatDate } from '@shared/utils/date-utils'
 import { RISK_LEVEL_LABELS } from '@shared/constants/risk-levels'

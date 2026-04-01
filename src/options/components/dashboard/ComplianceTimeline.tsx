@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { DiscoveryRecord } from '@shared/types/discovery'
 import type { ComplianceSnapshot } from '@shared/types/compliance'
-import { takeSnapshot } from '@options/utils/snapshot-service'
+import { takeSnapshot } from '@shared/utils/snapshot-service'
 import { useDateConfig } from '@options/hooks/useDateConfig'
 import { formatDateShort } from '@shared/utils/date-utils'
 

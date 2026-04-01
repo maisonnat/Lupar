@@ -38,6 +38,19 @@ const defaultSettings = {
     adminRole: 'compliance_officer',
     department: '',
   },
+  retentionPolicy: {
+    discoveryRetentionDays: 365,
+    snapshotRetentionDays: 730,
+    activityLogRetentionDays: 180,
+  },
+  exportConfig: {
+    defaultFormat: 'html',
+    includeInventory: true,
+    includeComplianceMap: true,
+    includeRecommendations: true,
+    includeAuditTrail: true,
+    defaultDateRangeDays: 0,
+  },
 }
 
 async function renderSettings() {
@@ -172,7 +185,7 @@ describe('Settings', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Ingrese un dominio válido'),
+        screen.getByText('Ingrese un dominio o patrón válido'),
       ).toBeInTheDocument()
     })
   })

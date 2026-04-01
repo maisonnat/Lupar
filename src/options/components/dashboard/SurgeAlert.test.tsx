@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import SurgeAlert from '@options/components/dashboard/SurgeAlert'
-import type { SurgeAlert as SurgeAlertType } from '@options/utils/risk-calculator'
+import type { SurgeAlert as SurgeAlertType } from '@shared/utils/risk-calculator'
 
 vi.mock('@options/hooks/useDateConfig', () => ({
   useDateConfig: () => ({

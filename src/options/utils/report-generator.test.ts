@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { generateReport, generateContentHash, generateReportWithHash } from '@options/utils/report-generator'
-import { createMockComplianceStatus } from '@test-utils/mock-helpers'
+import { createMockComplianceStatus, createMockDetectionEvent } from '@test-utils/mock-helpers'
 import type { DiscoveryRecord } from '@shared/types/discovery'
 import type { AppSettings } from '@shared/types/storage'
 
@@ -21,6 +21,7 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [createMockDetectionEvent()],
     ...overrides,
   }
 }
@@ -58,6 +59,20 @@ const defaultSettings: AppSettings = {
     adminRole: 'compliance_officer',
     department: '',
   },
+  retentionPolicy: {
+    discoveryRetentionDays: 365,
+    snapshotRetentionDays: 730,
+    activityLogRetentionDays: 180,
+  },
+  detectionThrottleMs: 5000,
+  exportConfig: {
+    defaultFormat: 'html',
+    defaultDateRangeDays: 0,
+    includeInventory: true,
+    includeComplianceMap: true,
+    includeRecommendations: true,
+    includeAuditTrail: true,
+  },
 }
 
 describe('generateReport', () => {
@@ -83,13 +98,63 @@ describe('generateReport', () => {
     expect(html).toContain('Reporte de Cumplimiento IA')
   })
 
-  it('should include all 5 sections', () => {
+  it('should include all 10 sections (Audit Trail only when entries exist)', () => {
     const html = generateReport([makeDiscovery()], defaultSettings)
     expect(html).toContain('Resumen Ejecutivo')
     expect(html).toContain('Inventario de Herramientas IA')
     expect(html).toContain('Mapa de Cumplimiento')
     expect(html).toContain('Recomendaciones')
+    expect(html).toContain('Gobernanza de IA')
+    expect(html).toContain('Timeline de Detección')
+    expect(html).toContain('Brechas con Fechas de Compromiso')
+    expect(html).toContain('Firmas')
+    expect(html).toContain('Appendix: Regulaciones')
     expect(html).toContain('Generado por AI Compliance Tracker')
+  })
+
+  it('should include Governance section with admin info', () => {
+    const adminSettings: AppSettings = {
+      ...defaultSettings,
+      adminProfile: {
+        adminName: 'Carlos López',
+        adminEmail: 'carlos@empresa.com',
+        adminRole: 'compliance_officer',
+        department: 'Legal',
+      },
+    }
+    const html = generateReport([makeDiscovery()], adminSettings)
+    expect(html).toContain('Gobernanza de IA')
+    expect(html).toContain('Carlos López')
+    expect(html).toContain('carlos@empresa.com')
+    expect(html).toContain('Legal')
+  })
+
+  it('should include Timeline section with chart', () => {
+    const html = generateReport([makeDiscovery()], defaultSettings)
+    expect(html).toContain('Timeline de Detección')
+    expect(html).toContain('timeline-chart')
+    expect(html).toContain('Detecciones por mes')
+  })
+
+  it('should include Brechas con Deadlines section', () => {
+    const html = generateReport([makeDiscovery()], defaultSettings)
+    expect(html).toContain('Brechas con Fechas de Compromiso')
+  })
+
+  it('should include Signature section with signature boxes', () => {
+    const html = generateReport([makeDiscovery()], defaultSettings)
+    expect(html).toContain('Firmas')
+    expect(html).toContain('signature-box')
+    expect(html).toContain('Responsable de Compliance')
+    expect(html).toContain('Aprobación Ejecutiva')
+  })
+
+  it('should include Appendix with regulation articles', () => {
+    const html = generateReport([makeDiscovery()], defaultSettings)
+    expect(html).toContain('Appendix: Regulaciones')
+    expect(html).toContain('EU Artificial Intelligence Act')
+    expect(html).toContain('ISO/IEC 42001:2023')
+    expect(html).toContain('Colorado SB 24-205')
   })
 
   it('should include tool data in inventory table', () => {

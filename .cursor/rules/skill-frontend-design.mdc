@@ -1,0 +1,28 @@
+---
+description: High-quality, production-grade frontend design and styling principles.
+globs: **/*.tsx, **/*.css, **/*.html
+---
+
+# Skill: Frontend Design (Gentle AI)
+Use this skill to create distinctive, visually striking, and memorable UI that avoids "AI aesthetics".
+
+## Core Principles
+- **Bold Aesthetics**: Choose a clear conceptual direction (e.g., brutally minimal, organic, editorial).
+- **Typography**: Select unique, characterful fonts. Avoid Inter/Arial. Pair display and body fonts effectively.
+- **Color & Theme**: Commit to cohesive palettes. Use CSS variables. Dominant colors with sharp accents.
+- **Motion**: Prioritize CSS animations for micro-interactions and high-impact moments (staggered reveals).
+- **Spatial Composition**: Use asymmetry, overlap, diagonal flow, and generous negative space.
+
+## Avoid "AI Slop"
+- No overused font families (Inter, Roboto).
+- No cliched purple gradients on white.
+- No predictable component patterns.
+- No cookie-cutter layouts.
+
+## Implementation Details
+- Meticulous refinement in every detail.
+- Match complexity to the aesthetic vision.
+- Use Motion library (Framer Motion) for React when available.
+
+## Reference
+See `c:\Proyectos\Lupar\.agents\skills\frontend-design\SKILL.md` for inspiration and full guidelines.

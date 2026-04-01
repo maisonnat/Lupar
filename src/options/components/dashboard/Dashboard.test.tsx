@@ -23,6 +23,7 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [],
     ...overrides,
   }
 }
@@ -59,6 +60,19 @@ const defaultSettings = {
       adminEmail: '',
       adminRole: 'compliance_officer',
       department: '',
+    },
+    retentionPolicy: {
+      discoveryRetentionDays: 365,
+      snapshotRetentionDays: 730,
+      activityLogRetentionDays: 180,
+    },
+    exportConfig: {
+      defaultFormat: 'html',
+      includeInventory: true,
+      includeComplianceMap: true,
+      includeRecommendations: true,
+      includeAuditTrail: true,
+      defaultDateRangeDays: 0,
     },
   }
 

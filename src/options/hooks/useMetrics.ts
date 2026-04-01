@@ -3,7 +3,7 @@ import type { DiscoveryRecord } from '@shared/types/discovery'
 import type { ActivityLogEntry } from '@shared/types/storage'
 import type { RiskLevel } from '@shared/types/domain'
 import type { RegulationType } from '@shared/types/compliance'
-import { calculateRiskScore, countByRiskLevel, countByStatus } from '@options/utils/risk-calculator'
+import { calculateRiskScore, countByRiskLevel, countByStatus } from '@shared/utils/risk-calculator'
 
 export interface DashboardMetrics {
   totalDetected: number

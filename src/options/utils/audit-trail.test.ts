@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createAuditEntries, appendAuditEntries, MAX_AUDIT_ENTRIES_PER_TOOL } from './audit-trail'
 import type { DiscoveryRecord, AuditEntry } from '@shared/types/discovery'
-import { createMockComplianceStatus } from '@test-utils/mock-helpers'
+import { createMockComplianceStatus, createMockDetectionEvent } from '@test-utils/mock-helpers'
 
 function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecord {
   return {
@@ -20,6 +20,7 @@ function makeDiscovery(overrides: Partial<DiscoveryRecord> = {}): DiscoveryRecor
     notes: '',
     tags: [],
     auditTrail: [],
+    detectionEvents: [createMockDetectionEvent()],
     ...overrides,
   }
 }

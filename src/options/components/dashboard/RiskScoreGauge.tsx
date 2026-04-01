@@ -1,4 +1,4 @@
-import type { RiskScoreResult } from '@options/utils/risk-calculator'
+import type { RiskScoreResult } from '@shared/utils/risk-calculator'
 
 interface RiskScoreGaugeProps {
   riskScore: RiskScoreResult

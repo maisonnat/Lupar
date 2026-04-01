@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import { useStorage } from '@options/hooks/useStorage'
 import { useMetrics } from '@options/hooks/useMetrics'
 import { useSnapshots } from '@options/hooks/useSnapshots'
-import { getUpcomingDeadlines, buildHeatmapData, detectSurge } from '@options/utils/risk-calculator'
+import { useMaturityMetrics } from '@options/hooks/useMaturityMetrics'
+import { getUpcomingDeadlines, buildHeatmapData, detectSurge } from '@shared/utils/risk-calculator'
 import MetricCard from './MetricCard'
 import RiskScoreGauge from './RiskScoreGauge'
 import ComplianceStatus from './ComplianceStatus'
@@ -11,6 +12,7 @@ import RecentActivity from './RecentActivity'
 import UpcomingDeadlines from './UpcomingDeadlines'
 import RiskHeatmap from './RiskHeatmap'
 import SurgeAlert from './SurgeAlert'
+import MaturityWidget from './MaturityWidget'
 
 const TotalIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -40,6 +42,7 @@ export default function Dashboard() {
   const { discoveries, activityLog, settings } = useStorage()
   const metrics = useMetrics(discoveries, activityLog)
   const { snapshots, reload: reloadSnapshots } = useSnapshots()
+  const maturityMetrics = useMaturityMetrics(discoveries, snapshots)
 
   const deadlines = useMemo(
     () => settings ? getUpcomingDeadlines(discoveries, settings) : [],
@@ -97,6 +100,10 @@ export default function Dashboard() {
 
       <div className="mb-6">
         <SurgeAlert alert={surgeAlert} />
+      </div>
+
+      <div className="mb-6">
+        <MaturityWidget metrics={maturityMetrics} />
       </div>
 
       <div className="mb-6">

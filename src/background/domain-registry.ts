@@ -130,6 +130,14 @@ export function getAllDomains(): string[] {
   return Array.from(domainRegistry.keys())
 }
 
+function matchesPattern(hostname: string, pattern: string): boolean {
+  if (!pattern.startsWith('*.')) {
+    return false
+  }
+  const suffix = pattern.slice(1)
+  return hostname === suffix || hostname.endsWith(suffix)
+}
+
 export function lookupDomain(hostname: string): DomainEntry | null {
   const normalized = hostname.toLowerCase().replace(/^www\./, '')
 
@@ -145,6 +153,12 @@ export function lookupDomain(hostname: string): DomainEntry | null {
 
   for (const [pattern, entry] of domainRegistry) {
     if (normalized.endsWith(`.${pattern}`)) {
+      return entry
+    }
+  }
+
+  for (const [_domainKey, entry] of domainRegistry) {
+    if (entry.pattern && matchesPattern(normalized, entry.pattern)) {
       return entry
     }
   }
@@ -167,7 +181,8 @@ export function extractDomain(url: string): string | null {
 }
 
 export function addCustomEntry(entry: DomainEntry): void {
-  domainRegistry.set(entry.domain.toLowerCase(), entry)
+  const key = entry.pattern ? entry.pattern : entry.domain.toLowerCase()
+  domainRegistry.set(key, entry)
 }
 
 export function removeEntry(domain: string): void {

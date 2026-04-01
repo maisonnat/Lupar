@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useStorage } from '@options/hooks/useStorage'
 import { STORAGE_KEYS } from '@shared/types/storage'
 import type { AppSettings, CustomDomainEntry, AdminRole, DateFormat } from '@shared/types/storage'
+import { purgeExpiredData } from '@background/storage-service'
 import type { AICategory, RiskLevel } from '@shared/types/domain'
 import { CATEGORY_LABELS } from '@shared/constants/categories'
 import {
@@ -83,7 +84,14 @@ export default function Settings() {
   const [selectedRiskLevels, setSelectedRiskLevels] = useState<RiskLevel[]>(['prohibited', 'high'])
   const [maxUnassessedCount, setMaxUnassessedCount] = useState(10)
 
+  const [discoveryRetentionDays, setDiscoveryRetentionDays] = useState(365)
+  const [snapshotRetentionDays, setSnapshotRetentionDays] = useState(730)
+  const [activityLogRetentionDays, setActivityLogRetentionDays] = useState(180)
+
+  const [detectionThrottleMs, setDetectionThrottleMs] = useState(5000)
+
   const [customDomain, setCustomDomain] = useState('')
+  const [customPattern, setCustomPattern] = useState('')
   const [customToolName, setCustomToolName] = useState('')
   const [customCategory, setCustomCategory] = useState<AICategory>('chatbot')
   const [customRisk, setCustomRisk] = useState<RiskLevel>('limited')
@@ -108,6 +116,10 @@ export default function Settings() {
       setAssessmentDueDays(settings.alertConfig?.assessmentDueDays?.join(', ') ?? '30, 15, 7, 1')
       setSelectedRiskLevels(settings.alertConfig?.newDetectionRiskLevels ?? ['prohibited', 'high', 'limited', 'minimal'] as RiskLevel[])
       setMaxUnassessedCount(settings.alertConfig?.maxUnassessedCount ?? 10)
+      setDiscoveryRetentionDays(settings.retentionPolicy?.discoveryRetentionDays ?? 365)
+      setSnapshotRetentionDays(settings.retentionPolicy?.snapshotRetentionDays ?? 730)
+      setActivityLogRetentionDays(settings.retentionPolicy?.activityLogRetentionDays ?? 180)
+      setDetectionThrottleMs(settings.detectionThrottleMs ?? 5000)
       initialized.current = true
     }
   }, [settings])
@@ -203,6 +215,12 @@ export default function Settings() {
     await updateSettings({ dateFormat: newFormat })
   }
 
+  async function handleDetectionThrottleChange(value: string) {
+    const num = Math.max(1000, Math.min(30000, parseInt(value, 10) || 5000))
+    setDetectionThrottleMs(num)
+    await updateSettings({ detectionThrottleMs: num })
+  }
+
   async function handleAssessmentDueDaysBlur() {
     if (!settings) return
     const parsed = assessmentDueDays
@@ -241,6 +259,46 @@ export default function Settings() {
     })
   }
 
+  async function handleDiscoveryRetentionChange(value: string) {
+    const num = value === '' ? 0 : Math.max(0, Math.min(3650, parseInt(value, 10) || 0))
+    setDiscoveryRetentionDays(num)
+    if (!settings) return
+    await updateSettings({
+      retentionPolicy: { ...settings.retentionPolicy, discoveryRetentionDays: num },
+    })
+  }
+
+  async function handleSnapshotRetentionChange(value: string) {
+    const num = value === '' ? 0 : Math.max(0, Math.min(3650, parseInt(value, 10) || 0))
+    setSnapshotRetentionDays(num)
+    if (!settings) return
+    await updateSettings({
+      retentionPolicy: { ...settings.retentionPolicy, snapshotRetentionDays: num },
+    })
+  }
+
+  async function handleActivityLogRetentionChange(value: string) {
+    const num = value === '' ? 0 : Math.max(0, Math.min(3650, parseInt(value, 10) || 0))
+    setActivityLogRetentionDays(num)
+    if (!settings) return
+    await updateSettings({
+      retentionPolicy: { ...settings.retentionPolicy, activityLogRetentionDays: num },
+    })
+  }
+
+  async function handleManualPurge() {
+    if (!settings) return
+    try {
+      const result = await purgeExpiredData(settings)
+      showFeedbackMessage(
+        `Purga completada: ${result.discoveriesRemoved} herramientas, ${result.snapshotsRemoved} snapshots, ${result.activityLogRemoved} entradas eliminadas`,
+        'success',
+      )
+    } catch {
+      showFeedbackMessage('Error al ejecutar purga', 'error')
+    }
+  }
+
   function handleAuditToggle() {
     if (!settings) return
     const isCurrentlyActive = settings.auditModeConfig?.auditMode ?? false
@@ -273,6 +331,7 @@ export default function Settings() {
 
   function resetCustomDomainForm() {
     setCustomDomain('')
+    setCustomPattern('')
     setCustomToolName('')
     setCustomCategory('chatbot')
     setCustomRisk('limited')
@@ -284,8 +343,15 @@ export default function Settings() {
       .toLowerCase()
       .replace(/^https?:\/\//, '')
       .replace(/\/.*$/, '')
-    if (!domain) {
-      showFeedbackMessage('Ingrese un dominio válido', 'error')
+    
+    const pattern = customPattern
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/.*$/, '')
+    
+    if (!domain && !pattern) {
+      showFeedbackMessage('Ingrese un dominio o patrón válido', 'error')
       return
     }
     if (!customToolName.trim()) {
@@ -293,13 +359,16 @@ export default function Settings() {
       return
     }
     if (!settings) return
-    if (settings.customDomains.some((d) => d.domain === domain)) {
+    
+    const entryDomain = domain || `*.${pattern}`
+    if (settings.customDomains.some((d) => d.domain === entryDomain)) {
       showFeedbackMessage('Este dominio ya está en la lista', 'error')
       return
     }
 
     const entry: CustomDomainEntry = {
-      domain,
+      domain: entryDomain,
+      pattern: pattern ? `*.${pattern}` : undefined,
       toolName: customToolName.trim(),
       category: customCategory,
       defaultRiskLevel: customRisk,
@@ -310,7 +379,7 @@ export default function Settings() {
     })
     resetCustomDomainForm()
     showFeedbackMessage(
-      `Dominio "${domain}" agregado correctamente`,
+      `Dominio "${entryDomain}" agregado correctamente`,
       'success',
     )
   }
@@ -465,6 +534,20 @@ export default function Settings() {
         adminEmail: '',
         adminRole: 'compliance_officer',
         department: '',
+      },
+      retentionPolicy: {
+        discoveryRetentionDays: 365,
+        snapshotRetentionDays: 730,
+        activityLogRetentionDays: 180,
+      },
+      detectionThrottleMs: 5000,
+      exportConfig: {
+        defaultFormat: 'html',
+        includeInventory: true,
+        includeComplianceMap: true,
+        includeRecommendations: true,
+        includeAuditTrail: true,
+        defaultDateRangeDays: 0,
       },
     }
 
@@ -860,7 +943,7 @@ export default function Settings() {
           </h2>
           <p className="text-sm text-gray-500 mb-4">
             Agregue dominios de IA internos no cubiertos por el registro
-            automático.
+            automático. Use el patrón "*.empresa.com" para capturar todos los subdominios.
             {isAuditMode && (
               <span className="block mt-1 text-amber-600 text-xs font-medium">
                 Edición deshabilitada — modo auditor activo
@@ -868,13 +951,26 @@ export default function Settings() {
             )}
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
             <input
               type="text"
               placeholder="dominio.com"
               className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={customDomain}
               onChange={(e) => setCustomDomain(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAddCustomDomain()
+              }}
+            />
+            <div className="flex items-center text-gray-400 text-xs">
+              <span>o</span>
+            </div>
+            <input
+              type="text"
+              placeholder="*.empresa.com"
+              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={customPattern}
+              onChange={(e) => setCustomPattern(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleAddCustomDomain()
               }}
@@ -900,6 +996,9 @@ export default function Settings() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <select
               className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={customRisk}
@@ -933,7 +1032,9 @@ export default function Settings() {
                       {entry.toolName}
                     </span>
                     <span className="text-xs text-gray-400">
-                      {entry.domain}
+                      {entry.pattern ? (
+                        <span className="text-blue-600 font-medium">{entry.pattern}</span>
+                      ) : entry.domain}
                     </span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                       {CATEGORY_LABELS[entry.category]}
@@ -1024,6 +1125,124 @@ export default function Settings() {
               No hay dominios excluidos configurados
             </p>
           )}
+        </section>
+
+        <section className={`bg-white border border-gray-200 rounded-lg p-5 ${disabledSectionClass}`}>
+          <h2 className="text-sm font-medium text-gray-700 mb-2">
+            Retención de Datos
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Configura cuántos días se mantienen los datos antes de ser eliminados automáticamente.
+            La purga se ejecuta al iniciar la extensión.
+            {isAuditMode && (
+              <span className="block mt-1 text-amber-600 text-xs font-medium">
+                Edición deshabilitada — modo auditor activo
+              </span>
+            )}
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Herramientas detectadas
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="3650"
+                  value={discoveryRetentionDays || ''}
+                  onChange={(e) => handleDiscoveryRetentionChange(e.target.value)}
+                  placeholder="365"
+                  disabled={isAuditMode}
+                  data-testid="discovery-retention-input"
+                  className="w-24 border border-gray-300 rounded-md px-3 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
+                <span className="text-sm text-gray-500">días</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Snapshots de compliance
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="3650"
+                  value={snapshotRetentionDays || ''}
+                  onChange={(e) => handleSnapshotRetentionChange(e.target.value)}
+                  placeholder="730"
+                  disabled={isAuditMode}
+                  data-testid="snapshot-retention-input"
+                  className="w-24 border border-gray-300 rounded-md px-3 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
+                <span className="text-sm text-gray-500">días</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Registro de actividad
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="3650"
+                  value={activityLogRetentionDays || ''}
+                  onChange={(e) => handleActivityLogRetentionChange(e.target.value)}
+                  placeholder="180"
+                  disabled={isAuditMode}
+                  data-testid="activity-retention-input"
+                  className="w-24 border border-gray-300 rounded-md px-3 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
+                <span className="text-sm text-gray-500">días</span>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleManualPurge}
+            disabled={isAuditMode}
+            data-testid="manual-purge-button"
+            className="bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            Ejecutar purga ahora
+          </button>
+        </section>
+
+        <section className={`bg-white border border-gray-200 rounded-lg p-5 ${disabledSectionClass}`}>
+          <h2 className="text-sm font-medium text-gray-700 mb-2">
+            Frecuencia de Detección
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Controla el tiempo de espera entre detecciones del mismo dominio. 
+            Valores más bajos = más sensible, valores más altos = menos notificaciones repetidas.
+            {isAuditMode && (
+              <span className="block mt-1 text-amber-600 text-xs font-medium">
+                Edición deshabilitada — modo auditor activo
+              </span>
+            )}
+          </p>
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min="1000"
+              max="30000"
+              step="1000"
+              value={detectionThrottleMs}
+              onChange={(e) => handleDetectionThrottleChange(e.target.value)}
+              disabled={isAuditMode}
+              data-testid="detection-throttle-slider"
+              className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+            <div className="text-sm text-gray-700 font-mono min-w-[80px] text-right">
+              {detectionThrottleMs} ms
+            </div>
+          </div>
+          <div className="flex justify-between text-xs text-gray-400 mt-1">
+            <span>1 seg (sensible)</span>
+            <span>30 seg (conservador)</span>
+          </div>
         </section>
 
         <section className="bg-white border border-gray-200 rounded-lg p-5">

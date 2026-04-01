@@ -74,7 +74,7 @@ e2e/                         # Playwright E2E tests
 
 ## Key Technical Details
 
-- **Discovery engine throttle**: 5 seconds per domain (`THROTTLE_MS = 5000`)
+- **Discovery engine throttle**: configurable via Settings (default 5000ms, range 1000-30000ms)
 - **Badge**: Always red (`#ef4444`), shows count of `status === 'detected'` only
 - **Report**: Self-contained HTML file, filename `ai-compliance-report-YYYY-MM-DD.html`
 - **Status values**: `detected`, `confirmed`, `dismissed`, `authorized` (lowercase)

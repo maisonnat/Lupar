@@ -238,5 +238,41 @@ describe('domain-registry', () => {
       removeEntry('temp-tool.example.com')
       expect(lookupDomain('temp-tool.example.com')).toBeNull()
     })
+
+    it('should match wildcard pattern *.example.com', () => {
+      addCustomEntry({
+        domain: '*.example.com',
+        pattern: '*.example.com',
+        toolName: 'Internal AI',
+        category: 'chatbot',
+        defaultRiskLevel: 'limited',
+      })
+
+      expect(lookupDomain('app.example.com')).not.toBeNull()
+      expect(lookupDomain('app.example.com')!.toolName).toBe('Internal AI')
+      expect(lookupDomain('dev.example.com')).not.toBeNull()
+      expect(lookupDomain('dev.example.com')!.toolName).toBe('Internal AI')
+      expect(lookupDomain('api.example.com')).not.toBeNull()
+      expect(lookupDomain('api.example.com')!.toolName).toBe('Internal AI')
+      expect(lookupDomain('random-unrelated.com')).toBeNull()
+
+      removeEntry('*.example.com')
+    })
+
+    it('should not match unrelated domains with wildcard', () => {
+      addCustomEntry({
+        domain: '*.company.com',
+        pattern: '*.company.com',
+        toolName: 'Company AI',
+        category: 'chatbot',
+        defaultRiskLevel: 'limited',
+      })
+
+      expect(lookupDomain('app.company.com')).not.toBeNull()
+      expect(lookupDomain('app.company.com')!.toolName).toBe('Company AI')
+      expect(lookupDomain('random-unrelated.com')).toBeNull()
+
+      removeEntry('*.company.com')
+    })
   })
 })

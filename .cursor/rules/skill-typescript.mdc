@@ -1,0 +1,23 @@
+---
+description: Advanced TypeScript patterns and type-safety guidelines.
+globs: **/*.ts, **/*.tsx
+---
+
+# Skill: TypeScript Advanced Types
+Use this skill to implement complex type logic, reusable generics, and ensure maximum compile-time safety.
+
+## Core Patterns
+- **Generics**: Use for reusable components/functions. Always add constraints (`extends`) when possible.
+- **Conditional Types**: `T extends U ? X : Y` for types that depend on other types.
+- **Mapped Types**: Use `keyof` and `in` to transform existing types.
+- **Template Literal Types**: For string-based type safety (e.g., `${Category}_${Action}`).
+- **Utility Types**: Leverage `Partial`, `Pick`, `Omit`, `Exclude`, and `ReturnType`.
+
+## Best Practices
+- Avoid `any`. Use `unknown` with type guards if the type is truly dynamic.
+- Use `satisfies` to validate an object against a type without losing its specific shape.
+- Prefer `interface` for object shapes (extendable) and `type` for unions/intersections.
+- Keep type logic readable. If a conditional type gets too complex, break it into smaller named types.
+
+## Reference
+See `c:\Proyectos\Lupar\.agents\skills\typescript-advanced-types\SKILL.md` for detailed examples.

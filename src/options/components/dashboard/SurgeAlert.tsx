@@ -1,4 +1,4 @@
-import type { SurgeAlert as SurgeAlertType } from '@options/utils/risk-calculator'
+import type { SurgeAlert as SurgeAlertType } from '@shared/utils/risk-calculator'
 import { useDateConfig } from '@options/hooks/useDateConfig'
 import { formatDate } from '@shared/utils/date-utils'
 

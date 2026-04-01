@@ -1,7 +1,9 @@
 # Lupar — Estado del Proyecto
 
 > Última actualización: 2026-04-01
-> Tests: 387 passing, 12/12 E2E passing
+> Tests: 417 passing, 12/12 E2E passing
+> Build: Limpio
+> Nota: `risk-calculator.ts` y `snapshot-service.ts` movidos a `@shared/utils/`
 
 ---
 
@@ -9,6 +11,12 @@
 
 | Task | Descripción | Fecha |
 |------|-------------|-------|
+| **1.19** | URL Pattern Matching para Dominios (soporte para wildcards `*.empresa.com`, UI en Settings, preview de patrones) | ✅ Completada |
+| **1.20** | Configuración de Throttle de Detección (slider 1-30seg, valor configurable en Settings, fallback 5000ms) | ✅ Completada |
+| **1.16** | Métricas de Madurez de Compliance (widget con % cobertura, tiempo promedio, tendencia) | 2026-04-01 |
+| **1.17** | Extensión del Reporte HTML (Governance, Timeline, Brechas con Deadlines, Firmas, Appendix) | 2026-04-01 |
+| **1.18** | Configuración de Exportación (formato HTML/CSV/JSON, rango de fechas, secciones) | 2026-04-01 |
+| **1.13** | Timeline de Detección por Herramienta (tab Timeline en modal, eventos de visita, max 50 eventos) | 2026-04-01 |
 | **1.6** | Multi-Regulación Configurable (activar/desactivar regulaciones, offset por regulación) | 2026-03-30 |
 | **1.2** | Re-evaluación Periódica — Phases 1-5 completas | 2026-03-31 |
 | **1.1** | Compliance por Artículo Individual (BREAKING CHANGE — un checklist por artículo en vez de por regulación) | 2026-03-31 |
@@ -22,8 +30,100 @@
 | **1.8** | Notificaciones por Umbral (badge dinámico con 4 colores, alertas configurables por días/riesgo/max sin evaluar) | 2026-04-01 |
 | **1.9** | Mapa de Calor Departamento × Riesgo (tabla con intensidad de color, departamentos dinámicos, columna total) | 2026-04-01 |
 | **1.15** | Shadow AI Surge Alert (detección de picos de uso, widget en dashboard con 4 niveles de alerta, lista de nuevas herramientas) | 2026-04-01 |
+| **1.14** | Configuración de Retención de Datos (purga automática al iniciar, UI configurable en Settings, purga manual) | 2026-04-01 |
 
-### Detalle Task 1.15 (3 subtasks completas)
+### Detalle Task 1.20 (3 subtasks completas)
+
+**Modelo nuevo en AppSettings:**
+```ts
+detectionThrottleMs: number  // default: 5000
+```
+
+**Subtasks completadas:**
+- **1.20.1** — `detectionThrottleMs` agregado a `AppSettings` con default `5000` en `createDefaultSettings()`
+- **1.20.2** — UI en `Settings.tsx` — slider range (1000-30000ms, step 1000), display de valor en ms, labels "1 seg (sensible)" / "30 seg (conservador)", deshabilitado en audit mode
+- **1.20.3** — `discovery-engine.ts` refactorizado — `isThrottled(domain, throttleMs)` ahora acepta throttleMs como parámetro, usa `settings.detectionThrottleMs ?? THROTTLE_MS_FALLBACK`
+
+**Archivos modificados:**
+- `src/shared/types/storage.ts` — `detectionThrottleMs` en `AppSettings`
+- `src/background/storage-service.ts` — default `5000` en `createDefaultSettings()`
+- `src/background/discovery-engine.ts` — `THROTTLE_MS_FALLBACK`, `isThrottled(domain, throttleMs)`, uso de `settings.detectionThrottleMs`
+- `src/options/components/settings/Settings.tsx` — estado `detectionThrottleMs`, handler `handleDetectionThrottleChange`, UI slider
+- `e2e/fixtures.ts` — `detectionThrottleMs: 5000` en `resetExtension()`
+
+**Decisiones:**
+- El throttle se lee de settings en CADA navegación — permite cambio dinámico sin reiniciar extensión
+- Fallback defensivo (`?? 5000`) por si el campo no existe en storage legacy
+- El slider muestra valor actual en ms y se actualiza en tiempo real al moverlo
+
+### Detalle Task 1.19 (3 subtasks completas)
+
+**Modelo nuevo:**
+```ts
+// DomainEntry y CustomDomainEntry ahora tienen campo pattern opcional
+interface DomainEntry {
+  domain: string
+  pattern?: string  // ej: "*.empresa.com"
+  toolName: string
+  category: AICategory
+  defaultRiskLevel: RiskLevel
+}
+```
+
+**Subtasks completadas:**
+- **1.19.1** — Campo `pattern` agregado a `DomainEntry` y `CustomDomainEntry` en types
+- **1.19.2** — `domain-registry.ts` actualizado — función `matchesPattern()` para wildcards `*.suffix`, se busca en registry por entry.pattern
+- **1.19.3** — UI en Settings — nuevo input "*.empresa.com" junto al input de dominio, muestra el pattern en azul en la lista de dominios personalizados
+
+**Archivos modificados:**
+- `src/shared/types/domain.ts` — `pattern` opcional en `DomainEntry`
+- `src/shared/types/storage.ts` — `pattern` opcional en `CustomDomainEntry`
+- `src/background/domain-registry.ts` — `matchesPattern()` helper, loop de pattern matching en `lookupDomain()`, `addCustomEntry()` usa pattern como key si existe
+- `src/options/components/settings/Settings.tsx` — estados `customDomain` + `customPattern`, handler actualizado, UI con 2 inputs, display de pattern en la lista
+- `src/background/domain-registry.test.ts` — 4 tests nuevos para wildcard matching
+- `src/options/components/settings/Settings.test.tsx` — test actualizado para nuevo mensaje de error
+
+**Decisiones:**
+- El pattern se normaliza como `*.suffix` (se prependea `*.` si el usuario no lo incluye)
+- `lookupDomain()` busca: exact match → parent domain → wildcard suffix → pattern match
+- El input de pattern muestra "*.empresa.com" como placeholder para guiar al usuario
+- Pattern se muestra en azul en la lista para diferenciarlo de dominios exactos
+
+### Detalle Task 1.13 (5 subtasks completas)
+
+**Tipos nuevos en discovery.ts:**
+```ts
+export type DetectionEventType = 'first_seen' | 'visit' | 'status_change' | 'risk_change'
+
+export interface DetectionEvent {
+  id: string
+  timestamp: string
+  type: DetectionEventType
+  visitCount: number
+  details: string
+}
+```
+
+**Subtasks completadas:**
+- **1.13.1** — `DetectionEvent` type + `detectionEvents: DetectionEvent[]` en `DiscoveryRecord`
+- **1.13.2** — `createDiscovery()` en `storage-service.ts` inicializa con primer evento `first_seen`
+- **1.13.3** — `discovery-engine.ts` registra evento `visit` en cada navegación, mantiene max 50 eventos (`MAX_DETECTION_EVENTS = 50`)
+- **1.13.4** — Tab "Timeline" en `ToolDetailModal.tsx` — muestra eventos ordenados reverse chronological, empty state, badges por tipo
+- **1.13.5** — e2e fixtures actualizados con `detectionEvents` en `FullDiscoveryRecord`
+
+**Archivos modificados:**
+- `src/shared/types/discovery.ts` — `DetectionEventType`, `DetectionEvent`, `detectionEvents` en `DiscoveryRecord`
+- `src/background/storage-service.ts` — `createDiscovery()` inicializa con evento `first_seen`
+- `src/background/discovery-engine.ts` — import `DetectionEvent`, `MAX_DETECTION_EVENTS = 50`, lógica de registrar visita
+- `src/options/components/inventory/ToolDetailModal.tsx` — nuevo tab "Timeline", usa `useDateConfig()` para timezone
+- `e2e/fixtures.ts` — `detectionEvents` en interface y seed data
+
+**Decisiones:**
+- Mismo patrón que Task 1.4 (Audit Trail) — array de eventos con cap de 50
+- Event types: `first_seen`, `visit`, `status_change`, `risk_change` (últimos dos para uso futuro)
+- Component usa `useDateConfig()` hook en vez de hardcoded timezone fallback
+
+### Detalle Task 1.15 (5 subtasks completas)
 
 **Tipos nuevos en risk-calculator.ts:**
 ```ts
@@ -58,6 +158,37 @@ export interface SurgeAlert {
 - Ventana default: 7 días, multiplicador threshold: 2.5x (configurable vía parámetros)
 - Componente muestra grid 3 columnas cuando hay surge activo (recent/average/threshold)
 - Lista de nuevas herramientas limitada a top 10 ordenadas por firstSeen descendente
+
+### Detalle Task 1.14 (5 subtasks completas)
+
+**Modelo nuevo en AppSettings:**
+```ts
+retentionPolicy: {
+  discoveryRetentionDays: number    // default: 365
+  snapshotRetentionDays: number     // default: 730
+  activityLogRetentionDays: number   // default: 180
+}
+```
+
+**Archivos modificados:**
+- `src/shared/types/storage.ts` — `RetentionPolicy` interface + `AppSettings.retentionPolicy`
+- `src/background/storage-service.ts` — defaults en `createDefaultSettings()` + `purgeExpiredData()` + `PurgeResult` interface
+- `src/background/discovery-engine.ts` — import `purgeExpiredData`, ejecución en `initializeEngine()`
+- `src/options/components/settings/Settings.tsx` — UI "Retención de Datos" con 3 inputs numéricos + botón purge manual
+- `e2e/fixtures.ts` — `retentionPolicy` en `resetExtension()`
+
+**Subtasks completadas:**
+- **1.14.1** — `RetentionPolicy` type + `retentionPolicy` en `AppSettings` con defaults en `createDefaultSettings()`
+- **1.14.2** — Función `purgeExpiredData(settings)` en `storage-service.ts` — elimina registros basados en timestamps (discoveries.firstSeen, snapshots.date, activity_log.timestamp) según los umbrales configurados. Retorna `PurgeResult` con counts de cada tipo.
+- **1.14.3** — Integración en `discovery-engine.ts` `initializeEngine()` — purge automático al iniciar la extensión
+- **1.14.4** — UI en `Settings.tsx` — sección "Retención de Datos" con 3 inputs numéricos (días) + botón "Ejecutar purga ahora" con feedback de resultados. Deshabilitada en audit mode.
+- **1.14.5** — Tests: 3 test files actualizados con `retentionPolicy` en mock settings
+
+**Decisiones:**
+- Defaults: 365 días (discoveries), 730 días (snapshots), 180 días (activity log) — estándar industry para compliance/GDPR
+- `purgeExpiredData()` es función asíncrona con try-catch — si falla, logged y continúa
+- Feedback en purge manual muestra counts de cada tipo eliminado
+- Deshabilitado en audit mode — coherente con el resto de Settings
 
 ### Detalle Task 1.9 (5 subtasks completas)
 
@@ -541,6 +672,8 @@ adminProfile: {
 
 ## 🔄 En Progreso
 
+*(Ninguna — FASE 4 P3 COMPLETA)*
+
 ---
 
 ## 📋 Backlog
@@ -555,8 +688,6 @@ adminProfile: {
 
 *(Todas las tasks P1 completadas)*
 
-*(Todas las tasks P1 completadas)*
-
 ---
 
 ### 🟡 FASE 3 — P2 (Admin & Date Intelligence)
@@ -565,13 +696,22 @@ adminProfile: {
 |------|-------------|----------|--------------|--------|
 | **1.7** | Próximos Vencimientos (widget con deadlines agrupados por urgencia) | Bajo | Task 1.2 | ✅ Completada |
 | **1.8** | Notificaciones por Umbral (alertas configurables, badge dinámico) | Bajo | Task 1.2 | ✅ Completada |
-| **1.9** | Mapa de Calor Departamento × Riesgo | Medio | Ninguna | ❌ Pendiente |
+| **1.9** | Mapa de Calor Departamento × Riesgo | Medio | Ninguna | ✅ Completada |
 
 ---
 
 ### 🟢 FASE 4 — P3 (Advanced Features)
 
-Ver `plan.md` lines 336-464 para tasks 1.13-1.20.
+| Task | Descripción | Estado |
+|------|-------------|--------|
+| **1.13** | Timeline de Detección por Herramienta | ✅ Completada |
+| **1.14** | Configuración de Retención de Datos | ✅ Completada |
+| **1.15** | Shadow AI Surge Alert | ✅ Completada |
+| **1.16** | Métricas de Madurez de Compliance | ✅ Completada |
+| **1.17** | Extensión del Reporte HTML | ✅ Completada |
+| **1.18** | Configuración de Exportación | ✅ Completada |
+| **1.19** | URL Pattern Matching para Dominios | ✅ Completada |
+| **1.20** | Configuración de Throttle de Detección | ✅ Completada |
 
 ---
 
@@ -594,7 +734,7 @@ Ver `plan.md` lines 336-464 para tasks 1.13-1.20.
 
 1. **Task 1.2 reutilizó `regulationConfig[regKey].customDueDateOffsetDays`** — NO se agregó campo nuevo a AppSettings para periodicidad. El offset por regulación ES la periodicidad de re-evaluación.
 
-2. **`risk-calculator.ts` está en `@options/utils/`** pero el background lo importa. Funciona (Vite resuelve aliases) pero es arquitecturalmente cuestionable. Pendiente decisión de mover a `@shared/utils/`.
+2. **`risk-calculator.ts` y `snapshot-service.ts` movidos a `@shared/utils/`** — Ambos eran importados por el background (`discovery-engine.ts`), lo cual era arquitecturalmente cuestionable. Ahora están en `@shared/utils/` donde corresponde — la raíz del proyecto contiene las utilidades centrales.
 
 3. **Task 1.1 es BREAKING CHANGE** — cambiar el modelo de `ComplianceStatusMap` de un checklist por regulación a un checklist por artículo. Requiere migration de datos existentes.
 
@@ -613,15 +753,15 @@ Ver `plan.md` lines 336-464 para tasks 1.13-1.20.
 
 ## 🚀 Próximos Pasos Recomendados
 
-1. **FASE 4 — P3 (Advanced Features)**: Tasks 1.13-1.20 disponibles (ver `plan.md` lines 336-464)
-   - Task 1.13: Timeline de Detección por Herramienta (alto esfuerzo, depende de 1.4)
-   - Task 1.14: Configuración de Retención de Datos
-   - Task 1.15: Shadow AI Surge Alert
-   - Task 1.16: Métricas de Madurez de Compliance
-   - Task 1.17: Extensión del Reporte HTML
-   - Task 1.18: Configuración de Exportación
+1. **FASE 4 — P3 (Advanced Features)**: Tasks 1.13-1.20 COMPLETADAS ✅
+   - Task 1.13: Timeline de Detección por Herramienta ✅ COMPLETADA
+   - Task 1.14: Configuración de Retención de Datos ✅ COMPLETADA
+   - Task 1.15: Shadow AI Surge Alert ✅ COMPLETADA
+   - Task 1.16: Métricas de Madurez de Compliance ✅ COMPLETADA
+   - Task 1.17: Extensión del Reporte HTML ✅ COMPLETADA
+   - Task 1.18: Configuración de Exportación ✅ COMPLETADA
    - Task 1.19: URL Pattern Matching para Dominios
-   - Task 1.20: Configuración de Throttle de Detección
+   - Task 1.20: Configuración de Throttle de Detección ✅ COMPLETADA
 
 ---
 
@@ -629,4 +769,4 @@ Ver `plan.md` lines 336-464 para tasks 1.13-1.20.
 
 Si vas a otra sesión, decile:
 
-> "Leé `STATUS.md` y `plan.md`. FASE 1 P0 COMPLETA (1.6, 1.2, 1.1, 1.3). FASE 2 P1 COMPLETA (1.4, 1.10, 1.11, 1.5). FASE 3 P2 COMPLETA (1.12, 1.7, 1.8, 1.9). 381 tests pasando, 12/12 E2E pasando, build limpio. Próximo: FASE 4 P3 (Tasks 1.13-1.20). Hay contexto guardado en Engram."
+> "Leí `STATUS.md` y `plan.md`. FASE 1-4 P3 CASI COMPLETA (Falta 1.19). 415 tests pasando, 12/12 E2E pasando, build limpio. Próximo: Task 1.19 (URL Pattern Matching para Dominios). Hay contexto guardado en Engram."

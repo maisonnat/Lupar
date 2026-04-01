@@ -19,6 +19,7 @@ export interface ComplianceGap {
   assessment: AssessmentStatus
   action: string
   severity: number
+  dueDate: string | null
 }
 
 export interface RegulationComplianceSummary {
@@ -141,6 +142,7 @@ export function mapCompliance(discoveries: DiscoveryRecord[]): ComplianceMapResu
           assessment: checklist.assessment,
           action,
           severity: severityMap[checklist.assessment],
+          dueDate: checklist.dueDate,
         })
       }
     }
