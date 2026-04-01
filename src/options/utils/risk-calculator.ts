@@ -22,6 +22,46 @@ export interface UpcomingDeadline {
 
 const DEFAULT_DAYS_AHEAD = 90
 
+export const RISK_LEVEL_ORDER: RiskLevel[] = ['prohibited', 'high', 'limited', 'minimal']
+
+export const NO_DEPARTMENT_LABEL = 'Sin asignar'
+
+export interface HeatmapData {
+  departments: string[]
+  cells: Record<string, Record<RiskLevel, number>>
+  maxCount: number
+  totalTools: number
+}
+
+export function buildHeatmapData(discoveries: DiscoveryRecord[]): HeatmapData {
+  const active = discoveries.filter((d) => d.status !== 'dismissed')
+
+  if (active.length === 0) {
+    return { departments: [], cells: {}, maxCount: 0, totalTools: 0 }
+  }
+
+  const cells: Record<string, Record<RiskLevel, number>> = {}
+  let maxCount = 0
+
+  for (const d of active) {
+    const dept = d.department ?? NO_DEPARTMENT_LABEL
+    const risk: RiskLevel = d.userRiskLevel ?? d.defaultRiskLevel
+
+    if (!cells[dept]) {
+      cells[dept] = { prohibited: 0, high: 0, limited: 0, minimal: 0 }
+    }
+
+    cells[dept][risk]++
+    if (cells[dept][risk] > maxCount) {
+      maxCount = cells[dept][risk]
+    }
+  }
+
+  const departments = Object.keys(cells).sort()
+
+  return { departments, cells, maxCount, totalTools: active.length }
+}
+
 export type BadgePriority = 'overdue' | 'upcoming_due' | 'max_unassessed' | 'normal'
 
 export interface BadgeState {

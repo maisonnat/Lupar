@@ -1,7 +1,7 @@
 # Lupar — Estado del Proyecto
 
 > Última actualización: 2026-04-01
-> Tests: 363 component pasando, 12/12 E2E pasando
+> Tests: 381 passing, 12/12 E2E passing
 
 ---
 
@@ -20,8 +20,9 @@
 | **1.12** | Timezone / Date Format (zona horaria configurable, formato de fecha, utilidad centralizada, 14 reemplazos hardcodeados) | 2026-04-01 |
 | **1.7** | Próximos Vencimientos (widget con deadlines por artículo, agrupados por urgencia) | 2026-04-01 |
 | **1.8** | Notificaciones por Umbral (badge dinámico con 4 colores, alertas configurables por días/riesgo/max sin evaluar) | 2026-04-01 |
+| **1.9** | Mapa de Calor Departamento × Riesgo (tabla con intensidad de color, departamentos dinámicos, columna total) | 2026-04-01 |
 
-### Detalle Task 1.12 (5 subtasks completas)
+### Detalle Task 1.9 (5 subtasks completas)
 
 **Modelo nuevo en AppSettings:**
 ```ts
@@ -159,6 +160,46 @@ interface BadgeState {
 - `newDetectionRiskLevels` vacío = contar todas las herramientas (fallback defensivo)
 - Toggles de risk level usan los colores de `RISK_LEVEL_COLORS` como background cuando activos
 - `maxUnassessedCount` con 0 = deshabilitado (no muestra amarillo)
+
+### Detalle Task 1.9 (5 subtasks completas)
+
+**Tipos nuevos en `risk-calculator.ts`:**
+```ts
+export const RISK_LEVEL_ORDER: RiskLevel[] = ['prohibited', 'high', 'limited', 'minimal']
+
+export const NO_DEPARTMENT_LABEL = 'Sin asignar'
+
+export interface HeatmapData {
+  departments: string[]
+  cells: Record<string, Record<RiskLevel, number>>
+  maxCount: number
+  totalTools: number
+}
+```
+
+**Archivos nuevos:**
+- `src/options/components/dashboard/RiskHeatmap.tsx` — componente tabla con colores de intensidad
+- `src/options/components/dashboard/RiskHeatmap.test.tsx` — 9 tests de componente
+
+**Subtasks completadas:**
+- **1.9.1** — `buildHeatmapData(discoveries)` en `risk-calculator.ts` — función pura que extrae departamentos únicos, agrupa por department × risk level, filtra `dismissed`, usa `userRiskLevel ?? defaultRiskLevel`, calcula maxCount para intensidad, agrupa null departments como "Sin asignar"
+- **1.9.2** — Componente `RiskHeatmap.tsx` — tabla con departamentos como filas, 4 columnas de riesgo, color de fondo con opacity proporcional (4 niveles: 0.15/0.3/0.5/0.75), columna Total por departamento, leyenda de intensidad, empty state
+- **1.9.3** — Integración en `Dashboard.tsx` — usaMemo para computar heatmapData, componente full-width entre RiskScoreGauge/ComplianceStatus y UpcomingDeadlines
+- **1.9.4** — Tests: 9 unit (buildHeatmapData) + 9 component (RiskHeatmap) = 18 tests nuevos
+- **1.9.5** — Fix en `makeDiscovery()` helper — `department: overrides.department ?? null` permite tests con department override
+
+**Archivos modificados:**
+- `src/options/utils/risk-calculator.ts` — `RISK_LEVEL_ORDER`, `NO_DEPARTMENT_LABEL`, `HeatmapData`, `buildHeatmapData()`
+- `src/options/utils/risk-calculator.test.ts` — 9 tests nuevos en describe `buildHeatmapData` + fix `department` override en `makeDiscovery()`
+- `src/options/components/dashboard/Dashboard.tsx` — imports + useMemo + JSX de RiskHeatmap
+- 5 archivos de tests existentes actualizados con `department` override en mock settings
+
+**Decisiones:**
+- `buildHeatmapData()` es función PURA — testeable en unit tests sin mock de chrome API
+- Departamentos se extraen dinámicamente de discoveries — no hay lista maestra predefinida
+- Filtra `dismissed` — consistente con `getUpcomingDeadlines`, `evaluateBadgeState`, etc.
+- Orden de risk levels: prohibited > high > limited > minimal (más severo a menos)
+- Componente recibe `data: HeatmapData` como prop — no hace fetch interno (patrón consistente con UpcomingDeadlines)
 
 ### Detalle Task 1.11 (4 subtasks completas)
 
@@ -535,8 +576,15 @@ Ver `plan.md` lines 336-464 para tasks 1.13-1.20.
 
 ## 🚀 Próximos Pasos Recomendados
 
-1. **FASE 3 — P2**: Task 1.9 (Mapa de Calor Departamento × Riesgo) — última task de FASE 3
-2. **FASE 4 — P3**: Tasks 1.13-1.20 (ver `plan.md`)
+1. **FASE 4 — P3 (Advanced Features)**: Tasks 1.13-1.20 disponibles (ver `plan.md` lines 336-464)
+   - Task 1.13: Timeline de Detección por Herramienta (alto esfuerzo, depende de 1.4)
+   - Task 1.14: Configuración de Retención de Datos
+   - Task 1.15: Shadow AI Surge Alert
+   - Task 1.16: Métricas de Madurez de Compliance
+   - Task 1.17: Extensión del Reporte HTML
+   - Task 1.18: Configuración de Exportación
+   - Task 1.19: URL Pattern Matching para Dominios
+   - Task 1.20: Configuración de Throttle de Detección
 
 ---
 
@@ -544,4 +592,4 @@ Ver `plan.md` lines 336-464 para tasks 1.13-1.20.
 
 Si vas a otra sesión, decile:
 
-> "Leé `STATUS.md` y `plan.md`. FASE 1 P0 COMPLETA (1.6, 1.2, 1.1, 1.3). FASE 2 P1 COMPLETA (1.4, 1.10, 1.11, 1.5). FASE 3 P2: 1.12, 1.7, 1.8 COMPLETAS. 363 component + 12 E2E tests pasando. Build limpio. Último commit c2aa277 con Tasks 1.1–1.7. Próximo recomendado: Task 1.9 (Mapa de Calor) o FASE 4 P3. Hay contexto guardado en Engram."
+> "Leé `STATUS.md` y `plan.md`. FASE 1 P0 COMPLETA (1.6, 1.2, 1.1, 1.3). FASE 2 P1 COMPLETA (1.4, 1.10, 1.11, 1.5). FASE 3 P2 COMPLETA (1.12, 1.7, 1.8, 1.9). 381 tests pasando, 12/12 E2E pasando, build limpio. Próximo: FASE 4 P3 (Tasks 1.13-1.20). Hay contexto guardado en Engram."

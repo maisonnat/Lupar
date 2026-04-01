@@ -6,13 +6,14 @@ import {
   countByStatus,
   getUpcomingDeadlines,
   evaluateBadgeState,
+  buildHeatmapData,
 } from '@options/utils/risk-calculator'
 import type { DiscoveryRecord } from '@shared/types/discovery'
 import type { AppSettings } from '@shared/types/storage'
 import { createMockComplianceStatus } from '@test-utils/mock-helpers'
 
 function makeDiscovery(
-  overrides: Partial<Pick<DiscoveryRecord, 'defaultRiskLevel' | 'userRiskLevel' | 'status' | 'complianceStatus' | 'toolName' | 'id'>> = {},
+  overrides: Partial<Pick<DiscoveryRecord, 'defaultRiskLevel' | 'userRiskLevel' | 'status' | 'complianceStatus' | 'toolName' | 'id' | 'department'>> = {},
 ): DiscoveryRecord {
   return {
     id: overrides.id ?? 'test-id',
@@ -22,7 +23,7 @@ function makeDiscovery(
     defaultRiskLevel: overrides.defaultRiskLevel ?? 'limited',
     userRiskLevel: overrides.userRiskLevel ?? null,
     status: overrides.status ?? 'detected',
-    department: null,
+    department: overrides.department ?? null,
     firstSeen: '2026-03-15T09:00:00.000Z',
     lastSeen: '2026-03-15T09:00:00.000Z',
     visitCount: 1,
@@ -756,6 +757,106 @@ describe('risk-calculator', () => {
       const result = evaluateBadgeState(discoveries, settings)
 
       expect(result.priority).toBe('normal')
+    })
+  })
+
+  describe('buildHeatmapData', () => {
+    it('should return empty data for empty discoveries', () => {
+      const result = buildHeatmapData([])
+      expect(result.departments).toEqual([])
+      expect(result.cells).toEqual({})
+      expect(result.maxCount).toBe(0)
+      expect(result.totalTools).toBe(0)
+    })
+
+    it('should filter out dismissed tools', () => {
+      const discoveries = [
+        makeDiscovery({ id: 'd1', department: 'Engineering', defaultRiskLevel: 'high', status: 'dismissed' }),
+        makeDiscovery({ id: 'd2', department: 'Engineering', defaultRiskLevel: 'high', status: 'detected' }),
+      ]
+      const result = buildHeatmapData(discoveries)
+      expect(result.totalTools).toBe(1)
+      expect(result.cells['Engineering'].high).toBe(1)
+    })
+
+    it('should group null departments as "Sin asignar"', () => {
+      const discoveries = [
+        makeDiscovery({ id: 'd1', department: null, defaultRiskLevel: 'high' }),
+        makeDiscovery({ id: 'd2', department: 'Marketing', defaultRiskLevel: 'limited' }),
+      ]
+      const result = buildHeatmapData(discoveries)
+      expect(result.departments).toContain('Sin asignar')
+      expect(result.departments).toContain('Marketing')
+      expect(result.cells['Sin asignar'].high).toBe(1)
+    })
+
+    it('should use userRiskLevel over defaultRiskLevel', () => {
+      const discoveries = [
+        makeDiscovery({ id: 'd1', department: 'IT', defaultRiskLevel: 'minimal', userRiskLevel: 'prohibited' }),
+      ]
+      const result = buildHeatmapData(discoveries)
+      expect(result.cells['IT'].prohibited).toBe(1)
+      expect(result.cells['IT'].minimal).toBe(0)
+    })
+
+    it('should count multiple tools per department correctly', () => {
+      const discoveries = [
+        makeDiscovery({ id: 'd1', department: 'Finance', defaultRiskLevel: 'high' }),
+        makeDiscovery({ id: 'd2', department: 'Finance', defaultRiskLevel: 'high' }),
+        makeDiscovery({ id: 'd3', department: 'Finance', defaultRiskLevel: 'limited' }),
+        makeDiscovery({ id: 'd4', department: 'Finance', defaultRiskLevel: 'prohibited' }),
+      ]
+      const result = buildHeatmapData(discoveries)
+      expect(result.cells['Finance'].high).toBe(2)
+      expect(result.cells['Finance'].limited).toBe(1)
+      expect(result.cells['Finance'].prohibited).toBe(1)
+      expect(result.cells['Finance'].minimal).toBe(0)
+      expect(result.totalTools).toBe(4)
+    })
+
+    it('should calculate maxCount correctly across all departments', () => {
+      const discoveries = [
+        makeDiscovery({ id: 'd1', department: 'IT', defaultRiskLevel: 'high' }),
+        makeDiscovery({ id: 'd2', department: 'IT', defaultRiskLevel: 'high' }),
+        makeDiscovery({ id: 'd3', department: 'IT', defaultRiskLevel: 'high' }),
+        makeDiscovery({ id: 'd4', department: 'HR', defaultRiskLevel: 'prohibited' }),
+        makeDiscovery({ id: 'd5', department: 'HR', defaultRiskLevel: 'prohibited' }),
+      ]
+      const result = buildHeatmapData(discoveries)
+      expect(result.maxCount).toBe(3)
+    })
+
+    it('should sort departments alphabetically', () => {
+      const discoveries = [
+        makeDiscovery({ id: 'd1', department: 'Zeta', defaultRiskLevel: 'minimal' }),
+        makeDiscovery({ id: 'd2', department: 'Alpha', defaultRiskLevel: 'minimal' }),
+        makeDiscovery({ id: 'd3', department: 'Middle', defaultRiskLevel: 'minimal' }),
+      ]
+      const result = buildHeatmapData(discoveries)
+      expect(result.departments).toEqual(['Alpha', 'Middle', 'Zeta'])
+    })
+
+    it('should handle all statuses except dismissed', () => {
+      const discoveries = [
+        makeDiscovery({ id: 'd1', department: 'Ops', defaultRiskLevel: 'high', status: 'detected' }),
+        makeDiscovery({ id: 'd2', department: 'Ops', defaultRiskLevel: 'high', status: 'confirmed' }),
+        makeDiscovery({ id: 'd3', department: 'Ops', defaultRiskLevel: 'high', status: 'authorized' }),
+        makeDiscovery({ id: 'd4', department: 'Ops', defaultRiskLevel: 'high', status: 'dismissed' }),
+      ]
+      const result = buildHeatmapData(discoveries)
+      expect(result.totalTools).toBe(3)
+      expect(result.cells['Ops'].high).toBe(3)
+    })
+
+    it('should return correct totalTools count', () => {
+      const discoveries = [
+        makeDiscovery({ id: 'd1', department: 'A', defaultRiskLevel: 'high' }),
+        makeDiscovery({ id: 'd2', department: 'B', defaultRiskLevel: 'limited' }),
+        makeDiscovery({ id: 'd3', department: null, defaultRiskLevel: 'minimal' }),
+        makeDiscovery({ id: 'd4', department: 'A', defaultRiskLevel: 'prohibited', status: 'dismissed' }),
+      ]
+      const result = buildHeatmapData(discoveries)
+      expect(result.totalTools).toBe(3)
     })
   })
 })
