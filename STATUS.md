@@ -1,7 +1,7 @@
 # Lupar — Estado del Proyecto
 
 > Última actualización: 2026-04-01
-> Tests: 338 component pasando, 12/12 E2E pasando
+> Tests: 363 component pasando, 12/12 E2E pasando
 
 ---
 
@@ -19,6 +19,7 @@
 | **1.5** | Snapshots de Compliance (historial temporal, timeline en dashboard, auto-snapshot en reportes, frecuencia configurable) | 2026-04-01 |
 | **1.12** | Timezone / Date Format (zona horaria configurable, formato de fecha, utilidad centralizada, 14 reemplazos hardcodeados) | 2026-04-01 |
 | **1.7** | Próximos Vencimientos (widget con deadlines por artículo, agrupados por urgencia) | 2026-04-01 |
+| **1.8** | Notificaciones por Umbral (badge dinámico con 4 colores, alertas configurables por días/riesgo/max sin evaluar) | 2026-04-01 |
 
 ### Detalle Task 1.12 (5 subtasks completas)
 
@@ -107,6 +108,57 @@ interface UpcomingDeadline {
 - `settings` es `AppSettings | null` en `useStorage()` — se usa guard: `settings ? getUpcomingDeadlines(...) : []`
 - Sorted ascending por `daysRemaining` — lo más urgente primero
 - Se filtran herramientas `dismissed` — no tiene sentido mostrar vencimientos de herramientas descartadas
+
+### Detalle Task 1.8 (6 subtasks completadas)
+
+**Modelo nuevo en AppSettings:**
+```ts
+alertConfig: {
+  assessmentDueDays: number[]        // default: [30, 15, 7, 1]
+  newDetectionRiskLevels: RiskLevel[] // default: ['prohibited', 'high']
+  maxUnassessedCount: number         // default: 10
+}
+```
+
+**Tipos nuevos en risk-calculator.ts:**
+```ts
+type BadgePriority = 'overdue' | 'upcoming_due' | 'max_unassessed' | 'normal'
+
+interface BadgeState {
+  text: string
+  color: string
+  priority: BadgePriority
+  visible: boolean
+}
+```
+
+**Subtasks completadas:**
+- **1.8.1** — `AlertConfig` type en `storage.ts` + `alertConfig` en `AppSettings` con defaults en `createDefaultSettings()`
+- **1.8.2** — `evaluateBadgeState(discoveries, settings)` en `risk-calculator.ts` — función pura que retorna `BadgeState`. Evalúa: badgeNotifications off → hidden; filtra detected por newDetectionRiskLevels; prioridad: overdue (rojo) > upcoming_due (naranja) > max_unassessed (amarillo) > normal (azul). Usa optional chaining para `alertConfig` — si falta, cuenta todas las herramientas.
+- **1.8.3** — `updateBadge()` refactorizado en `discovery-engine.ts` — usa `evaluateBadgeState()` en vez de lógica inline. Ahora hace `Promise.all([getDiscoveries(), getSettings()])` para eficiencia.
+- **1.8.4** — UI en `Settings.tsx` — sección "Configuración de Alertas" con: input texto para días (comma-separated, parsea y ordena descendente en blur), toggles con colores por risk level (4 botones pill), input numérico para max sin evaluar.
+- **1.8.5** — `handleClearAll()` resetea `alertConfig` a defaults + e2e fixtures actualizados
+- **1.8.6** — Tests: 16 unit (evaluateBadgeState) + 8 component (Settings alertConfig) = 24 tests nuevos
+
+**Archivos modificados:**
+- `src/shared/types/storage.ts` — `AlertConfig`, `AppSettings.alertConfig`
+- `src/background/storage-service.ts` — defaults con `alertConfig`
+- `src/options/utils/risk-calculator.ts` — `BadgePriority`, `BadgeState`, `BADGE_COLORS`, `evaluateBadgeState()`
+- `src/background/discovery-engine.ts` — `updateBadge()` refactorizado usando `evaluateBadgeState()`
+- `src/options/components/settings/Settings.tsx` — sección Configuración de Alertas + estados + handlers + reset
+- `e2e/fixtures.ts` — `alertConfig` en `resetExtension()`
+- `src/options/utils/risk-calculator.test.ts` — 16 tests nuevos en describe `evaluateBadgeState`
+- `src/options/components/settings/Settings.test.tsx` — 8 tests nuevos en describe `Alert Config`
+- 7 archivos de tests actualizados con `alertConfig` en mock settings (consistencia)
+
+**Decisiones:**
+- `evaluateBadgeState()` es función PURA (sin side effects) — testeable en unit tests sin mock de chrome API
+- Badge text = count de detected tools filtrados por `newDetectionRiskLevels` (no cambia con prioridad)
+- Badge color cambia según prioridad: `#ef4444` (overdue) > `#f97316` (upcoming) > `#eab308` (max unassessed) > `#3b82f6` (normal)
+- `assessmentDueDays` se parsea de string comma-separated, ordena descendente, filtra duplicados y valores inválidos en blur
+- `newDetectionRiskLevels` vacío = contar todas las herramientas (fallback defensivo)
+- Toggles de risk level usan los colores de `RISK_LEVEL_COLORS` como background cuando activos
+- `maxUnassessedCount` con 0 = deshabilitado (no muestra amarillo)
 
 ### Detalle Task 1.11 (4 subtasks completas)
 
@@ -434,7 +486,7 @@ adminProfile: {
 | Task | Descripción | Esfuerzo | Dependencias | Estado |
 |------|-------------|----------|--------------|--------|
 | **1.7** | Próximos Vencimientos (widget con deadlines agrupados por urgencia) | Bajo | Task 1.2 | ✅ Completada |
-| **1.8** | Notificaciones por Umbral (alertas configurables, badge dinámico) | Bajo | Task 1.2 | ❌ Pendiente |
+| **1.8** | Notificaciones por Umbral (alertas configurables, badge dinámico) | Bajo | Task 1.2 | ✅ Completada |
 | **1.9** | Mapa de Calor Departamento × Riesgo | Medio | Ninguna | ❌ Pendiente |
 
 ---
@@ -483,7 +535,8 @@ Ver `plan.md` lines 336-464 para tasks 1.13-1.20.
 
 ## 🚀 Próximos Pasos Recomendados
 
-1. **FASE 3 — P2**: Tasks 1.7 (Vencimientos), 1.8 (Notificaciones), 1.9 (Mapa de Calor)
+1. **FASE 3 — P2**: Task 1.9 (Mapa de Calor Departamento × Riesgo) — última task de FASE 3
+2. **FASE 4 — P3**: Tasks 1.13-1.20 (ver `plan.md`)
 
 ---
 
@@ -491,4 +544,4 @@ Ver `plan.md` lines 336-464 para tasks 1.13-1.20.
 
 Si vas a otra sesión, decile:
 
-> "Leé `STATUS.md` y `plan.md`. FASE 1 P0 COMPLETA (1.6, 1.2, 1.1, 1.3). FASE 2 P1 COMPLETA (1.4, 1.10, 1.11, 1.5). FASE 3 P2: 1.12 COMPLETA. 312 component + 12 E2E tests pasando. Próximo recomendado: Task 1.7 (Vencimientos). Hay contexto guardado en Engram."
+> "Leé `STATUS.md` y `plan.md`. FASE 1 P0 COMPLETA (1.6, 1.2, 1.1, 1.3). FASE 2 P1 COMPLETA (1.4, 1.10, 1.11, 1.5). FASE 3 P2: 1.12, 1.7, 1.8 COMPLETAS. 363 component + 12 E2E tests pasando. Build limpio. Último commit c2aa277 con Tasks 1.1–1.7. Próximo recomendado: Task 1.9 (Mapa de Calor) o FASE 4 P3. Hay contexto guardado en Engram."

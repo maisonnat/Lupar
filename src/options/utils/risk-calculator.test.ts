@@ -5,6 +5,7 @@ import {
   countByRiskLevel,
   countByStatus,
   getUpcomingDeadlines,
+  evaluateBadgeState,
 } from '@options/utils/risk-calculator'
 import type { DiscoveryRecord } from '@shared/types/discovery'
 import type { AppSettings } from '@shared/types/storage'
@@ -54,6 +55,11 @@ function makeDefaultSettings(): AppSettings {
       auditMode: false,
       auditModeActivatedAt: null,
       auditModeActivatedBy: null,
+    },
+    alertConfig: {
+      assessmentDueDays: [30, 15, 7, 1],
+      newDetectionRiskLevels: ['prohibited', 'high'],
+      maxUnassessedCount: 10,
     },
     adminProfile: {
       adminName: '',
@@ -474,6 +480,282 @@ describe('risk-calculator', () => {
       expect(result).toHaveLength(2)
       expect(result[0].articleId).toBe('art-4')
       expect(result[1].articleId).toBe('art-6')
+    })
+  })
+
+  describe('evaluateBadgeState', () => {
+    it('should return hidden badge when badgeNotifications is off', () => {
+      const settings = makeDefaultSettings()
+      settings.badgeNotifications = false
+      const discoveries = [makeDiscovery({ defaultRiskLevel: 'high' })]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(false)
+      expect(result.text).toBe('')
+    })
+
+    it('should return hidden badge when no detected tools match risk levels', () => {
+      const settings = makeDefaultSettings()
+      settings.alertConfig.newDetectionRiskLevels = ['prohibited']
+      const discoveries = [makeDiscovery({ defaultRiskLevel: 'limited' })]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(false)
+    })
+
+    it('should return hidden badge when no detected tools', () => {
+      const settings = makeDefaultSettings()
+      const discoveries = [makeDiscovery({ status: 'confirmed' })]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(false)
+    })
+
+    it('should return blue badge as default for normal detected tools', () => {
+      const settings = makeDefaultSettings()
+      const discoveries = [makeDiscovery({ defaultRiskLevel: 'high' })]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(true)
+      expect(result.text).toBe('1')
+      expect(result.color).toBe('#3b82f6')
+      expect(result.priority).toBe('normal')
+    })
+
+    it('should count only tools matching newDetectionRiskLevels', () => {
+      const settings = makeDefaultSettings()
+      settings.alertConfig.newDetectionRiskLevels = ['prohibited']
+      const discoveries = [
+        makeDiscovery({ id: 'd1', defaultRiskLevel: 'limited' }),
+        makeDiscovery({ id: 'd2', defaultRiskLevel: 'prohibited' }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(true)
+      expect(result.text).toBe('1')
+    })
+
+    it('should count all detected tools when newDetectionRiskLevels is empty', () => {
+      const settings = makeDefaultSettings()
+      settings.alertConfig.newDetectionRiskLevels = []
+      const discoveries = [
+        makeDiscovery({ id: 'd1', defaultRiskLevel: 'limited' }),
+        makeDiscovery({ id: 'd2', defaultRiskLevel: 'prohibited' }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(true)
+      expect(result.text).toBe('2')
+    })
+
+    it('should return red badge when overdue articles exist', () => {
+      const settings = makeDefaultSettings()
+      const discoveries = [
+        makeDiscovery({
+          defaultRiskLevel: 'high',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'overdue', lastAssessedDate: null, dueDate: daysFromNow(-5), notes: '' },
+            },
+          }),
+        }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(true)
+      expect(result.color).toBe('#ef4444')
+      expect(result.priority).toBe('overdue')
+    })
+
+    it('should return orange badge when assessments due within threshold', () => {
+      const settings = makeDefaultSettings()
+      const discoveries = [
+        makeDiscovery({
+          defaultRiskLevel: 'high',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(7), notes: '' },
+            },
+          }),
+        }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(true)
+      expect(result.color).toBe('#f97316')
+      expect(result.priority).toBe('upcoming_due')
+    })
+
+    it('should return yellow badge when unassessed count exceeds max', () => {
+      const settings = makeDefaultSettings()
+      settings.alertConfig.maxUnassessedCount = 2
+      const discoveries = [
+        makeDiscovery({ id: 'd1', defaultRiskLevel: 'high' }),
+        makeDiscovery({ id: 'd2', defaultRiskLevel: 'prohibited' }),
+        makeDiscovery({ id: 'd3', defaultRiskLevel: 'high' }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(true)
+      expect(result.color).toBe('#eab308')
+      expect(result.priority).toBe('max_unassessed')
+    })
+
+    it('should not trigger max_unassessed when count equals threshold', () => {
+      const settings = makeDefaultSettings()
+      settings.alertConfig.maxUnassessedCount = 3
+      const discoveries = [
+        makeDiscovery({ id: 'd1', defaultRiskLevel: 'high' }),
+        makeDiscovery({ id: 'd2', defaultRiskLevel: 'prohibited' }),
+        makeDiscovery({ id: 'd3', defaultRiskLevel: 'high' }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.priority).toBe('normal')
+      expect(result.color).toBe('#3b82f6')
+    })
+
+    it('should prioritize overdue over upcoming_due', () => {
+      const settings = makeDefaultSettings()
+      const discoveries = [
+        makeDiscovery({
+          defaultRiskLevel: 'high',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'overdue', lastAssessedDate: null, dueDate: daysFromNow(-5), notes: '' },
+              'art-6': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(7), notes: '' },
+            },
+          }),
+        }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.priority).toBe('overdue')
+      expect(result.color).toBe('#ef4444')
+    })
+
+    it('should prioritize upcoming_due over max_unassessed', () => {
+      const settings = makeDefaultSettings()
+      settings.alertConfig.maxUnassessedCount = 1
+      const discoveries = [
+        makeDiscovery({
+          defaultRiskLevel: 'high',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(5), notes: '' },
+            },
+          }),
+        }),
+        makeDiscovery({ id: 'd2', defaultRiskLevel: 'prohibited' }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.priority).toBe('upcoming_due')
+      expect(result.color).toBe('#f97316')
+    })
+
+    it('should skip dismissed tools for overdue check', () => {
+      const settings = makeDefaultSettings()
+      const discoveries = [
+        makeDiscovery({
+          status: 'dismissed',
+          defaultRiskLevel: 'high',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'overdue', lastAssessedDate: null, dueDate: daysFromNow(-5), notes: '' },
+            },
+          }),
+        }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(false)
+    })
+
+    it('should skip disabled regulations for overdue and upcoming checks', () => {
+      const settings = makeDefaultSettings()
+      settings.regulationConfig.euAiAct.enabled = false
+      const discoveries = [
+        makeDiscovery({
+          defaultRiskLevel: 'high',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'overdue', lastAssessedDate: null, dueDate: daysFromNow(-5), notes: '' },
+            },
+          }),
+        }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.priority).toBe('normal')
+    })
+
+    it('should use userRiskLevel over defaultRiskLevel for badge count', () => {
+      const settings = makeDefaultSettings()
+      settings.alertConfig.newDetectionRiskLevels = ['prohibited']
+      const discoveries = [
+        makeDiscovery({
+          defaultRiskLevel: 'limited',
+          userRiskLevel: 'prohibited',
+        }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.visible).toBe(true)
+      expect(result.text).toBe('1')
+    })
+
+    it('should respect custom assessmentDueDays thresholds', () => {
+      const settings = makeDefaultSettings()
+      settings.alertConfig.assessmentDueDays = [60]
+      const discoveries = [
+        makeDiscovery({
+          defaultRiskLevel: 'high',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(50), notes: '' },
+            },
+          }),
+        }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.priority).toBe('upcoming_due')
+    })
+
+    it('should not trigger upcoming_due when dueDate is outside all thresholds', () => {
+      const settings = makeDefaultSettings()
+      settings.alertConfig.assessmentDueDays = [7, 1]
+      const discoveries = [
+        makeDiscovery({
+          defaultRiskLevel: 'high',
+          complianceStatus: createMockComplianceStatus({
+            euAiAct: {
+              'art-4': { assessment: 'pending', lastAssessedDate: null, dueDate: daysFromNow(30), notes: '' },
+            },
+          }),
+        }),
+      ]
+
+      const result = evaluateBadgeState(discoveries, settings)
+
+      expect(result.priority).toBe('normal')
     })
   })
 })

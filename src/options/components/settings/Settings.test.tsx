@@ -27,6 +27,11 @@ const defaultSettings = {
     auditModeActivatedAt: null,
     auditModeActivatedBy: null,
   },
+  alertConfig: {
+    assessmentDueDays: [30, 15, 7, 1],
+    newDetectionRiskLevels: ['prohibited', 'high'],
+    maxUnassessedCount: 10,
+  },
   adminProfile: {
     adminName: '',
     adminEmail: '',
@@ -1079,6 +1084,164 @@ describe('Settings', () => {
       await waitFor(() => {
         const stored = mockStore['app_settings'] as typeof defaultSettings
         expect(stored.dateFormat).toBe('DD/MM/YYYY')
+      })
+    })
+  })
+
+  describe('Alert Config', () => {
+    it('should render alert config section', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      expect(screen.getByText('Configuración de Alertas')).toBeInTheDocument()
+      expect(screen.getByTestId('assessment-due-days-input')).toBeInTheDocument()
+      expect(screen.getByTestId('max-unassessed-input')).toBeInTheDocument()
+      expect(screen.getByTestId('risk-level-toggle-prohibited')).toBeInTheDocument()
+      expect(screen.getByTestId('risk-level-toggle-high')).toBeInTheDocument()
+      expect(screen.getByTestId('risk-level-toggle-limited')).toBeInTheDocument()
+      expect(screen.getByTestId('risk-level-toggle-minimal')).toBeInTheDocument()
+    })
+
+    it('should load alertConfig from storage', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        alertConfig: {
+          assessmentDueDays: [60, 30],
+          newDetectionRiskLevels: ['prohibited'],
+          maxUnassessedCount: 5,
+        },
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      await waitFor(() => {
+        expect(screen.getByTestId('assessment-due-days-input')).toHaveValue('60, 30')
+      })
+      expect(screen.getByTestId('max-unassessed-input')).toHaveValue(5)
+    })
+
+    it('should persist assessmentDueDays on blur', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const input = screen.getByTestId('assessment-due-days-input')
+      fireEvent.change(input, { target: { value: '60, 30, 7' } })
+      fireEvent.blur(input)
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.alertConfig.assessmentDueDays).toEqual([60, 30, 7])
+      })
+    })
+
+    it('should sort assessmentDueDays descending on blur', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const input = screen.getByTestId('assessment-due-days-input')
+      fireEvent.change(input, { target: { value: '7, 60, 15' } })
+      fireEvent.blur(input)
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.alertConfig.assessmentDueDays).toEqual([60, 15, 7])
+      })
+    })
+
+    it('should persist newDetectionRiskLevels on toggle', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        alertConfig: {
+          assessmentDueDays: [30, 15, 7, 1],
+          newDetectionRiskLevels: ['prohibited', 'high'],
+          maxUnassessedCount: 10,
+        },
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const limitedBtn = screen.getByTestId('risk-level-toggle-limited')
+      fireEvent.click(limitedBtn)
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.alertConfig.newDetectionRiskLevels).toEqual(['prohibited', 'high', 'limited'])
+      })
+    })
+
+    it('should remove risk level on toggle off', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        alertConfig: {
+          assessmentDueDays: [30, 15, 7, 1],
+          newDetectionRiskLevels: ['prohibited', 'high'],
+          maxUnassessedCount: 10,
+        },
+      }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const highBtn = screen.getByTestId('risk-level-toggle-high')
+      fireEvent.click(highBtn)
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.alertConfig.newDetectionRiskLevels).toEqual(['prohibited'])
+      })
+    })
+
+    it('should persist maxUnassessedCount on change', async () => {
+      mockStore['app_settings'] = { ...defaultSettings }
+      mockStore['ai_discoveries'] = []
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      const input = screen.getByTestId('max-unassessed-input')
+      fireEvent.change(input, { target: { value: '25' } })
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.alertConfig.maxUnassessedCount).toBe(25)
+      })
+    })
+
+    it('should reset alertConfig on clear all', async () => {
+      mockStore['app_settings'] = {
+        ...defaultSettings,
+        alertConfig: {
+          assessmentDueDays: [60, 30],
+          newDetectionRiskLevels: ['prohibited'],
+          maxUnassessedCount: 5,
+        },
+      }
+      mockStore['ai_discoveries'] = [{ id: 'disc-1' }]
+      mockStore['activity_log'] = []
+
+      await renderSettings()
+
+      fireEvent.click(screen.getByText('Limpiar Todo'))
+      fireEvent.click(screen.getByText('Sí, eliminar todo'))
+
+      await waitFor(() => {
+        const stored = mockStore['app_settings'] as typeof defaultSettings
+        expect(stored.alertConfig.assessmentDueDays).toEqual([30, 15, 7, 1])
+        expect(stored.alertConfig.maxUnassessedCount).toBe(10)
       })
     })
   })

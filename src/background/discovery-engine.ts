@@ -8,7 +8,7 @@ import {
   logActivity,
   initializeWithMigration,
 } from '@background/storage-service'
-import { markOverdueAssessments } from '@options/utils/risk-calculator'
+import { markOverdueAssessments, evaluateBadgeState } from '@options/utils/risk-calculator'
 import { checkAndTakeScheduledSnapshot } from '@options/utils/snapshot-service'
 
 const THROTTLE_MS = 5000
@@ -71,13 +71,17 @@ export async function handleNavigation(url: string): Promise<void> {
 }
 
 export async function updateBadge(): Promise<void> {
-  const discoveries = await getDiscoveries()
-  const pendingCount = discoveries.filter((d) => d.status === 'detected').length
+  const [discoveries, settings] = await Promise.all([
+    getDiscoveries(),
+    getSettings(),
+  ])
+
+  const state = evaluateBadgeState(discoveries, settings)
 
   chrome.action.setBadgeText({
-    text: pendingCount > 0 ? String(pendingCount) : '',
+    text: state.visible ? state.text : '',
   })
-  chrome.action.setBadgeBackgroundColor({ color: '#ef4444' })
+  chrome.action.setBadgeBackgroundColor({ color: state.color })
 }
 
 export async function loadCustomDomains(): Promise<void> {

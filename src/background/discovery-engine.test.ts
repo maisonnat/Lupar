@@ -205,6 +205,11 @@ describe('discovery-engine', () => {
           auditModeActivatedAt: null,
           auditModeActivatedBy: null,
         },
+        alertConfig: {
+          assessmentDueDays: [30, 15, 7, 1],
+          newDetectionRiskLevels: ['prohibited', 'high'],
+          maxUnassessedCount: 10,
+        },
         adminProfile: {
           adminName: '',
           adminEmail: '',
@@ -241,6 +246,11 @@ describe('discovery-engine', () => {
           auditMode: false,
           auditModeActivatedAt: null,
           auditModeActivatedBy: null,
+        },
+        alertConfig: {
+          assessmentDueDays: [30, 15, 7, 1],
+          newDetectionRiskLevels: ['prohibited', 'high'],
+          maxUnassessedCount: 10,
         },
         adminProfile: {
           adminName: '',
@@ -309,12 +319,12 @@ describe('discovery-engine', () => {
 
   describe('updateBadge', () => {
     it('should show pending count when there are detected tools', async () => {
-      await handleNavigation('https://chatgpt.com')
+      await handleNavigation('https://hirevue.com')
       resetThrottleMap()
-      await handleNavigation('https://claude.ai')
+      await handleNavigation('https://clearview.ai')
 
       expect(chrome.action.setBadgeText).toHaveBeenCalledWith({ text: '2' })
-      expect(chrome.action.setBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#ef4444' })
+      expect(chrome.action.setBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#3b82f6' })
     })
 
     it('should clear badge when no pending tools', async () => {
@@ -327,10 +337,10 @@ describe('discovery-engine', () => {
     })
 
     it('should count only detected status tools', async () => {
-      await saveDiscovery(makeDiscovery({ id: '1', domain: 'a.com', status: 'detected' }))
-      await saveDiscovery(makeDiscovery({ id: '2', domain: 'b.com', status: 'confirmed' }))
-      await saveDiscovery(makeDiscovery({ id: '3', domain: 'c.com', status: 'authorized' }))
-      await saveDiscovery(makeDiscovery({ id: '4', domain: 'd.com', status: 'dismissed' }))
+      await saveDiscovery(makeDiscovery({ id: '1', domain: 'a.com', status: 'detected', defaultRiskLevel: 'high' }))
+      await saveDiscovery(makeDiscovery({ id: '2', domain: 'b.com', status: 'confirmed', defaultRiskLevel: 'high' }))
+      await saveDiscovery(makeDiscovery({ id: '3', domain: 'c.com', status: 'authorized', defaultRiskLevel: 'high' }))
+      await saveDiscovery(makeDiscovery({ id: '4', domain: 'd.com', status: 'dismissed', defaultRiskLevel: 'high' }))
 
       await updateBadge()
 
@@ -368,6 +378,11 @@ describe('discovery-engine', () => {
           auditMode: false,
           auditModeActivatedAt: null,
           auditModeActivatedBy: null,
+        },
+        alertConfig: {
+          assessmentDueDays: [30, 15, 7, 1],
+          newDetectionRiskLevels: ['prohibited', 'high'],
+          maxUnassessedCount: 10,
         },
         adminProfile: {
           adminName: '',

@@ -49,6 +49,11 @@ const defaultSettings = {
       auditModeActivatedAt: null,
       auditModeActivatedBy: null,
     },
+    alertConfig: {
+      assessmentDueDays: [30, 15, 7, 1],
+      newDetectionRiskLevels: ['prohibited', 'high'],
+      maxUnassessedCount: 10,
+    },
     adminProfile: {
       adminName: '',
       adminEmail: '',

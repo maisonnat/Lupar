@@ -22,6 +22,86 @@ export interface UpcomingDeadline {
 
 const DEFAULT_DAYS_AHEAD = 90
 
+export type BadgePriority = 'overdue' | 'upcoming_due' | 'max_unassessed' | 'normal'
+
+export interface BadgeState {
+  text: string
+  color: string
+  priority: BadgePriority
+  visible: boolean
+}
+
+const BADGE_COLORS: Record<BadgePriority, string> = {
+  overdue: '#ef4444',
+  upcoming_due: '#f97316',
+  max_unassessed: '#eab308',
+  normal: '#3b82f6',
+}
+
+export function evaluateBadgeState(
+  discoveries: DiscoveryRecord[],
+  settings: AppSettings,
+): BadgeState {
+  if (!settings.badgeNotifications) {
+    return { text: '', color: BADGE_COLORS.normal, priority: 'normal', visible: false }
+  }
+
+  const riskFilter = settings.alertConfig?.newDetectionRiskLevels
+  const detectedTools = discoveries.filter((d) => {
+    if (d.status !== 'detected') return false
+    if (!riskFilter || riskFilter.length === 0) return true
+    const effectiveRisk: RiskLevel = d.userRiskLevel ?? d.defaultRiskLevel
+    return riskFilter.includes(effectiveRisk)
+  })
+
+  if (detectedTools.length === 0) {
+    return { text: '', color: BADGE_COLORS.normal, priority: 'normal', visible: false }
+  }
+
+  const activeDiscoveries = discoveries.filter((d) => d.status !== 'dismissed')
+  const maxUnassessed = settings.alertConfig?.maxUnassessedCount ?? 10
+
+  const hasOverdue = activeDiscoveries.some((d) =>
+    (Object.keys(d.complianceStatus) as RegulationType[]).some((regKey) => {
+      const config = settings.regulationConfig?.[regKey]
+      if (!config?.enabled) return false
+      return hasOverdueArticle(d.complianceStatus[regKey])
+    }),
+  )
+
+  if (hasOverdue) {
+    return { text: String(detectedTools.length), color: BADGE_COLORS.overdue, priority: 'overdue', visible: true }
+  }
+
+  const dueDays = settings.alertConfig?.assessmentDueDays ?? [30, 15, 7, 1]
+  const now = new Date()
+  const hasUpcoming = activeDiscoveries.some((d) =>
+    (Object.keys(d.complianceStatus) as RegulationType[]).some((regKey) => {
+      const config = settings.regulationConfig?.[regKey]
+      if (!config?.enabled) return false
+      const articleMap = d.complianceStatus[regKey]
+      return Object.values(articleMap).some((checklist) => {
+        if (!checklist.dueDate) return false
+        if (checklist.assessment === 'complete' || checklist.assessment === 'not_applicable') return false
+        const dueDate = new Date(checklist.dueDate)
+        const daysRemaining = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        return dueDays.some((threshold) => daysRemaining >= 0 && daysRemaining <= threshold)
+      })
+    }),
+  )
+
+  if (hasUpcoming) {
+    return { text: String(detectedTools.length), color: BADGE_COLORS.upcoming_due, priority: 'upcoming_due', visible: true }
+  }
+
+  const unassessedCount = detectedTools.length
+  if (maxUnassessed > 0 && unassessedCount > maxUnassessed) {
+    return { text: String(detectedTools.length), color: BADGE_COLORS.max_unassessed, priority: 'max_unassessed', visible: true }
+  }
+
+  return { text: String(detectedTools.length), color: BADGE_COLORS.normal, priority: 'normal', visible: true }
+}
+
 function classifyUrgency(daysRemaining: number): DeadlineUrgency {
   if (daysRemaining < 0) return 'overdue'
   if (daysRemaining <= 7) return 'this_week'

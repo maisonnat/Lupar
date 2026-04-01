@@ -79,6 +79,10 @@ export default function Settings() {
   const [adminRole, setAdminRole] = useState<AdminRole>('compliance_officer')
   const [adminDepartment, setAdminDepartment] = useState('')
 
+  const [assessmentDueDays, setAssessmentDueDays] = useState('30, 15, 7, 1')
+  const [selectedRiskLevels, setSelectedRiskLevels] = useState<RiskLevel[]>(['prohibited', 'high'])
+  const [maxUnassessedCount, setMaxUnassessedCount] = useState(10)
+
   const [customDomain, setCustomDomain] = useState('')
   const [customToolName, setCustomToolName] = useState('')
   const [customCategory, setCustomCategory] = useState<AICategory>('chatbot')
@@ -101,6 +105,9 @@ export default function Settings() {
       setAdminEmail(settings.adminProfile?.adminEmail ?? '')
       setAdminRole(settings.adminProfile?.adminRole ?? 'compliance_officer')
       setAdminDepartment(settings.adminProfile?.department ?? '')
+      setAssessmentDueDays(settings.alertConfig?.assessmentDueDays?.join(', ') ?? '30, 15, 7, 1')
+      setSelectedRiskLevels(settings.alertConfig?.newDetectionRiskLevels ?? ['prohibited', 'high'] as RiskLevel[])
+      setMaxUnassessedCount(settings.alertConfig?.maxUnassessedCount ?? 10)
       initialized.current = true
     }
   }, [settings])
@@ -194,6 +201,44 @@ export default function Settings() {
   async function handleDateFormatChange(newFormat: DateFormat) {
     setDateFormat(newFormat)
     await updateSettings({ dateFormat: newFormat })
+  }
+
+  async function handleAssessmentDueDaysBlur() {
+    if (!settings) return
+    const parsed = assessmentDueDays
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !isNaN(n) && n > 0)
+      .sort((a, b) => b - a)
+    const unique = [...new Set(parsed)]
+    if (unique.length === 0) return
+    const currentDays = settings.alertConfig?.assessmentDueDays ?? []
+    if (JSON.stringify(currentDays) !== JSON.stringify(unique)) {
+      await updateSettings({
+        alertConfig: { ...settings.alertConfig, assessmentDueDays: unique },
+      })
+    }
+  }
+
+  async function handleRiskLevelToggle(level: RiskLevel) {
+    if (!settings) return
+    const current = selectedRiskLevels
+    const updated = current.includes(level)
+      ? current.filter((l) => l !== level)
+      : [...current, level]
+    setSelectedRiskLevels(updated)
+    await updateSettings({
+      alertConfig: { ...settings.alertConfig, newDetectionRiskLevels: updated },
+    })
+  }
+
+  async function handleMaxUnassessedChange(value: string) {
+    const num = value === '' ? 0 : Math.max(0, Math.min(999, parseInt(value, 10) || 0))
+    setMaxUnassessedCount(num)
+    if (!settings) return
+    await updateSettings({
+      alertConfig: { ...settings.alertConfig, maxUnassessedCount: num },
+    })
   }
 
   function handleAuditToggle() {
@@ -410,6 +455,11 @@ export default function Settings() {
         auditModeActivatedAt: null,
         auditModeActivatedBy: null,
       },
+      alertConfig: {
+        assessmentDueDays: [30, 15, 7, 1],
+        newDetectionRiskLevels: ['prohibited', 'high'] as RiskLevel[],
+        maxUnassessedCount: 10,
+      },
       adminProfile: {
         adminName: '',
         adminEmail: '',
@@ -436,6 +486,9 @@ export default function Settings() {
     setAdminEmail('')
     setAdminRole('compliance_officer')
     setAdminDepartment('')
+    setAssessmentDueDays('30, 15, 7, 1')
+    setSelectedRiskLevels(['prohibited', 'high'] as RiskLevel[])
+    setMaxUnassessedCount(10)
     resetCustomDomainForm()
     setExcludedDomain('')
     setShowClearModal(false)
@@ -611,6 +664,83 @@ export default function Settings() {
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white border border-gray-200 rounded-lg p-5">
+          <h2 className="text-sm font-medium text-gray-700 mb-2">
+            Configuración de Alertas
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Define las condiciones que cambian el color del badge de la extensión.
+            Rojo = vencidos, Naranja = próximos a vencer, Amarillo = máximo sin evaluar, Azul = normal.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Alertar vencimiento a (días)
+              </label>
+              <input
+                type="text"
+                value={assessmentDueDays}
+                onChange={(e) => setAssessmentDueDays(e.target.value)}
+                onBlur={handleAssessmentDueDaysBlur}
+                placeholder="30, 15, 7, 1"
+                data-testid="assessment-due-days-input"
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-gray-400">
+                Valores separados por coma. Se ordenan de mayor a menor.
+              </span>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-2">
+                Niveles de riesgo que generan alerta
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {(Object.entries(RISK_LEVEL_LABELS) as [RiskLevel, string][]).map(([level, label]) => {
+                  const isActive = selectedRiskLevels.includes(level)
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => handleRiskLevelToggle(level)}
+                      data-testid={`risk-level-toggle-${level}`}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                        isActive
+                          ? 'border-transparent text-white'
+                          : 'border-gray-300 text-gray-500 bg-white hover:bg-gray-50'
+                      }`}
+                      style={isActive ? { backgroundColor: RISK_LEVEL_COLORS[level] } : undefined}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+              <span className="text-xs text-gray-400 mt-1 block">
+                Solo las herramientas detectadas con estos niveles cuentan en el badge.
+                Si ninguno está seleccionado, se cuentan todas.
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-600 whitespace-nowrap">
+                Máximo sin evaluar
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="999"
+                value={maxUnassessedCount || ''}
+                placeholder="10"
+                onChange={(e) => handleMaxUnassessedChange(e.target.value)}
+                data-testid="max-unassessed-input"
+                className="w-20 border border-gray-300 rounded-md px-3 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-sm text-gray-600">
+                herramientas (0 = deshabilitado)
+              </span>
             </div>
           </div>
         </section>

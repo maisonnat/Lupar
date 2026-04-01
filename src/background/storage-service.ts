@@ -5,6 +5,7 @@ import type {
   ActivityLogEntry,
   StorageSchema,
 } from '@shared/types/storage'
+import type { RiskLevel } from '@shared/types/domain'
 import {
   STORAGE_KEYS,
   ACTIVITY_LOG_MAX_ENTRIES,
@@ -36,6 +37,11 @@ function createDefaultSettings(): AppSettings {
       auditMode: false,
       auditModeActivatedAt: null,
       auditModeActivatedBy: null,
+    },
+    alertConfig: {
+      assessmentDueDays: [30, 15, 7, 1],
+      newDetectionRiskLevels: ['prohibited', 'high'] as RiskLevel[],
+      maxUnassessedCount: 10,
     },
     adminProfile: {
       adminName: '',

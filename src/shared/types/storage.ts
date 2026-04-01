@@ -45,6 +45,12 @@ export interface AuditModeConfig {
   auditModeActivatedBy: string | null;
 }
 
+export interface AlertConfig {
+  assessmentDueDays: number[];
+  newDetectionRiskLevels: RiskLevel[];
+  maxUnassessedCount: number;
+}
+
 export type DateFormat = 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD'
 
 export interface AppSettings {
@@ -61,6 +67,7 @@ export interface AppSettings {
   excludedDomains: string[];
   regulationConfig: Record<RegulationType, RegulationConfig>;
   auditModeConfig: AuditModeConfig;
+  alertConfig: AlertConfig;
   adminProfile: AdminProfile;
 }
 
