@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, findAllByText } from '@testing-library/react'
 import UpcomingDeadlines from '@options/components/dashboard/UpcomingDeadlines'
 import { mockStore } from '../../../../vitest.setup'
 import type { UpcomingDeadline } from '@shared/utils/risk-calculator'
@@ -32,8 +32,9 @@ function makeDeadline(overrides: Partial<UpcomingDeadline> = {}): UpcomingDeadli
 }
 
 async function renderAndWait(ui: React.ReactElement) {
-  render(ui)
+  const result = render(ui)
   await waitFor(() => screen.getByText('Próximos Vencimientos'))
+  return result
 }
 
 describe('UpcomingDeadlines', () => {
@@ -87,9 +88,9 @@ describe('UpcomingDeadlines', () => {
 
   it('should show formatted due date', async () => {
     const dueDate = new Date(2026, 3, 15).toISOString()
-    await renderAndWait(<UpcomingDeadlines deadlines={[makeDeadline({ dueDate })]} />)
-    // Use findAllByText since date may be rendered as multiple text nodes
-    const dateElements = await screen.findAllByText(/15\/04\/2026/)
+    const { container } = await renderAndWait(<UpcomingDeadlines deadlines={[makeDeadline({ dueDate })]} />)
+    // Use findAllByText since date is rendered as multiple text nodes
+    const dateElements = await findAllByText(container, /15\/04\/2026/)
     expect(dateElements.length).toBeGreaterThan(0)
   })
 

@@ -150,7 +150,9 @@ describe('Inventory', () => {
 
     await renderInventory()
 
-    fireEvent.click(screen.getByText('ChatGPT'))
+    const rows = screen.getAllByRole('row')
+    // Click on the row (skip header row)
+    fireEvent.click(rows[1])
 
     await waitFor(() => {
       expect(screen.getByText('Información')).toBeInTheDocument()
@@ -168,7 +170,8 @@ describe('Inventory', () => {
 
     await renderInventory()
 
-    fireEvent.click(screen.getByText('ChatGPT'))
+    const rows = screen.getAllByRole('row')
+    fireEvent.click(rows[1])
 
     await waitFor(() => {
       expect(screen.getByText('Guardar cambios')).toBeInTheDocument()
