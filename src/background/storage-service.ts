@@ -40,7 +40,7 @@ function createDefaultSettings(): AppSettings {
     },
     alertConfig: {
       assessmentDueDays: [30, 15, 7, 1],
-      newDetectionRiskLevels: ['prohibited', 'high'] as RiskLevel[],
+      newDetectionRiskLevels: ['prohibited', 'high', 'limited', 'minimal'] as RiskLevel[],
       maxUnassessedCount: 10,
     },
     adminProfile: {

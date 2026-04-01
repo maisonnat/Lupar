@@ -46,7 +46,7 @@ function createMockSettings(): AppSettings {
     },
     alertConfig: {
       assessmentDueDays: [30, 15, 7, 1],
-      newDetectionRiskLevels: ['prohibited', 'high'],
+      newDetectionRiskLevels: ['prohibited', 'high', 'limited', 'minimal'],
       maxUnassessedCount: 10,
     },
     adminProfile: {

@@ -106,7 +106,7 @@ export default function Settings() {
       setAdminRole(settings.adminProfile?.adminRole ?? 'compliance_officer')
       setAdminDepartment(settings.adminProfile?.department ?? '')
       setAssessmentDueDays(settings.alertConfig?.assessmentDueDays?.join(', ') ?? '30, 15, 7, 1')
-      setSelectedRiskLevels(settings.alertConfig?.newDetectionRiskLevels ?? ['prohibited', 'high'] as RiskLevel[])
+      setSelectedRiskLevels(settings.alertConfig?.newDetectionRiskLevels ?? ['prohibited', 'high', 'limited', 'minimal'] as RiskLevel[])
       setMaxUnassessedCount(settings.alertConfig?.maxUnassessedCount ?? 10)
       initialized.current = true
     }
@@ -457,7 +457,7 @@ export default function Settings() {
       },
       alertConfig: {
         assessmentDueDays: [30, 15, 7, 1],
-        newDetectionRiskLevels: ['prohibited', 'high'] as RiskLevel[],
+        newDetectionRiskLevels: ['prohibited', 'high', 'limited', 'minimal'] as RiskLevel[],
         maxUnassessedCount: 10,
       },
       adminProfile: {
@@ -487,7 +487,7 @@ export default function Settings() {
     setAdminRole('compliance_officer')
     setAdminDepartment('')
     setAssessmentDueDays('30, 15, 7, 1')
-    setSelectedRiskLevels(['prohibited', 'high'] as RiskLevel[])
+    setSelectedRiskLevels(['prohibited', 'high', 'limited', 'minimal'] as RiskLevel[])
     setMaxUnassessedCount(10)
     resetCustomDomainForm()
     setExcludedDomain('')
